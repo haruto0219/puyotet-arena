@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta name="google-site-verification" content="EA_3B_uSKFcfWQtOPEsxGeFltPc0-MhrW3HyOmtDEGo" />
+<meta name="google-site-verification" content="EA_3B_uSKFcfWQtOPEsxGeFltPc0-MhrW3HyOmtDEGo" />    
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>PUYOTET ARENA｜無料オンライン対戦落ち物パズルゲーム（ブラウザ対応）</title>
@@ -14,12 +14,11 @@
 <meta property="og:description" content="ブラウザですぐ遊べるオンライン対戦パズル！ランクマッチ・フレンド戦・99人バトルロイヤル・CPU対戦対応。">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://haruto0219.github.io/puyotet-arena/">
-<meta property="og:image" content="https://haruto0219.github.io/puyotet-arena/ogp.png">
 <meta property="og:locale" content="ja_JP">
-<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="PUYOTET ARENA｜無料オンライン対戦パズルゲーム">
 <meta name="twitter:description" content="インストール不要・無料のブラウザ対戦パズル。ランクマ・ルーム戦・99人バトロワ対応！">
-<meta name="twitter:image" content="https://haruto0219.github.io/puyotet-arena/ogp.png">
+
 <!-- Google検索向け構造化データ（Webゲームとして認識させる） -->
 <script type="application/ld+json">
 {
@@ -41,6 +40,9 @@
 }
 </script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <style>
 :root {
   --bg-dark: #070a14;
@@ -979,6 +981,73 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
   animation: pulseWarn 0.6s infinite;
 }
 
+
+/* Cloud Sync Badge & Account Auth Modal */
+.cloud-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 999px; margin-bottom: 8px;
+  font-size: 0.72rem; font-weight: 800; cursor: pointer;
+  background: rgba(148, 163, 184, 0.14); color: var(--text-dim);
+  border: 1px solid rgba(148, 163, 184, 0.3); transition: all 0.15s;
+}
+.cloud-badge:hover { border-color: var(--cyan); color: var(--text-main); }
+.cloud-badge.synced {
+  background: rgba(34, 197, 94, 0.16); color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.45);
+}
+.cloud-badge.syncing {
+  background: rgba(56, 189, 248, 0.16); color: #7dd3fc;
+  border-color: rgba(56, 189, 248, 0.45);
+}
+.auth-box {
+  background: rgba(7, 10, 20, 0.65); border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px; padding: 12px; margin-bottom: 10px; text-align: left;
+}
+.auth-err {
+  font-size: 0.76rem; font-weight: 700; color: #f87171;
+  min-height: 18px; margin: 6px 0; text-align: left;
+}
+.auth-divider {
+  display: flex; align-items: center; gap: 10px; margin: 12px 0;
+  font-size: 0.74rem; color: var(--text-dim); font-weight: 700;
+}
+.auth-divider::before, .auth-divider::after {
+  content: ""; flex: 1; height: 1px; background: rgba(148, 163, 184, 0.25);
+}
+.btn-google {
+  width: 100%; padding: 10px 14px; border-radius: 10px;
+  background: #ffffff; color: #1e293b; border: 1px solid #cbd5e1;
+  font-weight: 800; font-size: 0.86rem; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  transition: all 0.15s;
+}
+.btn-google:hover:not(:disabled) { background: #f8fafc; box-shadow: 0 3px 12px rgba(0,0,0,0.22); }
+.auth-note {
+  font-size: 0.7rem; color: var(--text-dim); margin-top: 6px; line-height: 1.45; text-align: left;
+}
+.auth-status-card {
+  padding: 12px; border-radius: 12px; margin-bottom: 12px; text-align: left;
+  background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.4);
+}
+body.theme-light .auth-box,
+body.theme-light .auth-status-card {
+  background: var(--card-sub-bg, rgba(255,255,255,0.86)) !important;
+  color: var(--text-main); border-color: var(--border-glow);
+}
+body.theme-light .cloud-badge {
+  background: var(--card-sub-bg, rgba(255,255,255,0.82));
+  color: var(--text-dim); border-color: var(--border-glow);
+}
+body.theme-light .cloud-badge.synced {
+  background: rgba(22, 163, 74, 0.14); color: #15803d; border-color: rgba(22, 163, 74, 0.45);
+}
+body.theme-light .cloud-badge.syncing {
+  background: rgba(2, 132, 199, 0.14); color: #0369a1; border-color: rgba(2, 132, 199, 0.45);
+}
+body.theme-light .auth-err { color: #dc2626; }
+body.theme-light .auth-note { color: var(--text-dim); }
+body.theme-light .lb-summary { color: var(--text-main); }
+
 /* Toast */
 .toast {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
@@ -999,6 +1068,7 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
     <span class="pad-badge" id="padBadge">🎮 PAD</span>
   </div>
   <div class="top-controls">
+    <button class="pill-btn" id="btnAuthModal">👤 ログイン / 登録</button>
     <span class="coin-pill" id="topCoinPill">🪙 200</span>
     <button class="pill-btn" id="btnLeaderboardModal">🏆 ランキング</button>
     <button class="pill-btn" id="btnAchModal" style="position:relative;">🏅 実績・ミッション<span class="notif-dot" id="dailyNotifDot"></span></button>
@@ -1015,7 +1085,10 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
     <div class="lobby-grid">
       <!-- Left: Profile & History -->
       <div class="panel lobby-left">
-        <div class="panel-title">👤 プレイヤープロフィール</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+          <div class="panel-title" style="margin-bottom:0;">👤 プレイヤープロフィール</div>
+        </div>
+        <button type="button" class="cloud-badge" id="cloudSyncBadge" title="アカウント設定・クラウド同期を開く">☁ クラウド保存：未ログイン（ゲスト）</button>
         <div class="profile-header">
           <div>
             <div style="font-size:0.72rem;color:var(--text-dim);">CURRENT RATING</div>
@@ -1824,7 +1897,7 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
       <button class="set-tab" data-lbtab="chain">🔥 最大連鎖</button>
     </div>
     <div class="lb-list" id="lbList"></div>
-    <div style="font-size:0.72rem;color:var(--text-dim);margin:6px 0 8px;">
+    <div id="lbSourceNote" style="font-size:0.72rem;color:var(--text-dim);margin:6px 0 8px;">
       オンライン対戦（ランクマッチ・ルーム対戦）を行うと、対戦したプレイヤーの記録が自動で追加されます。
     </div>
     <div class="lb-summary" id="lbSummaryBar">あなたの順位: #1 / 1</div>
@@ -1971,6 +2044,69 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
   </div>
 </div>
 
+<!-- ACCOUNT AUTH & CLOUD SYNC OVERLAY -->
+<div class="overlay" id="overlayAuth">
+  <div class="result-card" style="max-width:440px;padding:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+      <div class="panel-title" style="margin-bottom:0;font-size:1rem;">👤 アカウント & クラウドセーブ</div>
+      <button class="pill-btn" id="btnCloseAuth" style="padding:4px 10px;">✕</button>
+    </div>
+
+    <div id="authUnconfiguredBanner" style="display:none;padding:8px 10px;border-radius:8px;margin-bottom:10px;font-size:0.74rem;font-weight:700;background:rgba(245,158,11,0.16);border:1px solid rgba(245,158,11,0.45);color:var(--gold);text-align:left;">
+      ⚠ Firebase設定が未入力のためゲスト（ローカル）モードで動作中です。コード内の <code>FIREBASE_CONFIG</code> を設定するとクラウド保存・全国ランキングが有効になります。
+    </div>
+
+    <!-- Logged Out View -->
+    <div id="authLoggedOutView">
+      <div class="set-tabs" style="grid-template-columns:repeat(2,1fr);margin-bottom:10px;">
+        <button class="set-tab active" data-authtab="login" id="authTabLogin">🔑 ログイン</button>
+        <button class="set-tab" data-authtab="register" id="authTabRegister">✨ 新規登録</button>
+      </div>
+
+      <div class="auth-box">
+        <div style="font-size:0.76rem;font-weight:800;color:var(--cyan);margin-bottom:8px;" id="authFormHeading">ID＋パスワードでログイン（メール不要）</div>
+        <div class="form-row" style="margin-bottom:8px;">
+          <label class="form-label" for="authUserId">ユーザーID（半角英数字・_ 3〜20文字）</label>
+          <input id="authUserId" class="input-field" maxlength="20" autocomplete="username" placeholder="例: puyo_master99">
+        </div>
+        <div class="form-row" style="margin-bottom:6px;">
+          <label class="form-label" for="authPassword">パスワード（6文字以上）</label>
+          <input id="authPassword" type="password" class="input-field" maxlength="64" autocomplete="current-password" placeholder="6文字以上のパスワード">
+        </div>
+        <div class="auth-err" id="authErrorMsg"></div>
+        <button class="btn btn-primary" id="btnAuthSubmit" style="width:100%;padding:10px;font-size:0.9rem;">🔑 ログインする</button>
+      </div>
+
+      <div class="auth-divider">または</div>
+
+      <button class="btn-google" id="btnAuthGoogle">
+        <span>G</span><span>Googleアカウントでログイン</span>
+      </button>
+      <div class="auth-note">
+        ※学校・組織のGoogleアカウントではブロックされる場合があります。その場合は上の『ID＋パスワード』で登録してください。<br>
+        ※新規登録すると、現在ゲストで遊んでいるレート・コイン・所持テーマ・記録がそのままクラウドに引き継がれます。
+      </div>
+    </div>
+
+    <!-- Logged In View -->
+    <div id="authLoggedInView" style="display:none;">
+      <div class="auth-status-card">
+        <div style="font-size:0.74rem;color:var(--green);font-weight:900;margin-bottom:4px;">☁ クラウド同期有効（ログイン中）</div>
+        <div style="font-size:0.92rem;font-weight:900;color:var(--text-main);" id="authSignedName">PLAYER</div>
+        <div style="font-size:0.74rem;color:var(--text-dim);margin-top:4px;" id="authSignedMethod">ログイン方式: ID＋パスワード</div>
+        <div style="font-size:0.72rem;color:var(--text-dim);font-family:monospace;margin-top:2px;" id="authSignedUid">UID: --------</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-primary" id="btnAuthSyncNow" style="width:100%;">☁ 今すぐ同期</button>
+        <button class="btn btn-danger" id="btnAuthLogout" style="width:100%;">🚪 ログアウト</button>
+      </div>
+      <div class="auth-note" style="margin-top:10px;">
+        試合終了・記録更新・ショップ購入時に自動でクラウド保存されます。別端末から同じIDでログインするとデータが復元されます。
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- STEALTH PASSCODE DIALOG -->
 <div class="overlay" id="overlayAdmGate">
   <div class="result-card" style="max-width:300px;padding:18px;">
@@ -2055,6 +2191,248 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
 <script>
 (() => {
   'use strict';
+
+  /* =========================================================================
+     0. FIREBASE CONFIG (Authentication + Cloud Firestore)
+     Firebaseコンソール → プロジェクト設定 → マイアプリ から値を貼り付けてください。
+     未設定（"YOUR_API_KEY"）またはオフライン時は自動でゲスト（ローカル）モードで動作します。
+     ========================================================================= */
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAd1HsTKp4pMpr7Nz19EKTaWenSZ_cLkXk",
+    authDomain: "puyotet-arena-b60cc.firebaseapp.com",
+    projectId: "puyotet-arena-b60cc",
+    storageBucket: "puyotet-arena-b60cc.firebasestorage.app",
+    messagingSenderId: "713097149059",
+    appId: "1:713097149059:web:b1dec993fb9848d3ff39b6"
+  };
+
+  let fbApp = null;
+  let fbAuth = null;
+  let fbDb = null;
+  let fbReady = false;
+  let fbUser = null;
+  let fbSaveTimer = null;
+  let fbLeaderboardCache = null; // null = not fetched / offline fallback
+
+  function isFirebaseConfigured() {
+    return !!(
+      typeof firebase !== 'undefined' &&
+      FIREBASE_CONFIG &&
+      FIREBASE_CONFIG.apiKey &&
+      FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY' &&
+      FIREBASE_CONFIG.projectId &&
+      FIREBASE_CONFIG.projectId !== 'YOUR_PROJECT_ID'
+    );
+  }
+
+  function initFirebaseSafe() {
+    if (!isFirebaseConfigured()) {
+      fbReady = false;
+      return;
+    }
+    try {
+      fbApp = firebase.apps && firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
+      fbAuth = firebase.auth();
+      fbDb = firebase.firestore();
+      fbReady = true;
+    } catch (e) {
+      fbReady = false;
+      fbAuth = null;
+      fbDb = null;
+    }
+  }
+  initFirebaseSafe();
+
+  function formatFirebaseAuthError(err) {
+    const code = (err && err.code) || '';
+    switch (code) {
+      case 'auth/email-already-in-use': return 'そのIDはすでに使われています。別のIDをお試しください。';
+      case 'auth/invalid-credential':
+      case 'auth/wrong-password':
+      case 'auth/user-not-found':
+      case 'auth/invalid-login-credentials': return 'IDまたはパスワードが違います。';
+      case 'auth/weak-password': return 'パスワードは6文字以上にしてください。';
+      case 'auth/invalid-email': return 'ユーザーIDの形式が正しくありません。';
+      case 'auth/too-many-requests': return '試行回数が多すぎます。少し待ってから再度お試しください。';
+      case 'auth/network-request-failed': return 'ネットワークエラーです。通信環境を確認してください。';
+      case 'auth/popup-blocked': return 'ポップアップがブロックされました。上の『ID＋パスワード』をご利用ください。';
+      case 'auth/popup-closed-by-user': return 'ログインウィンドウが閉じられました。';
+      case 'auth/unauthorized-domain': return 'このドメインはGoogleログイン未許可です。上の『ID＋パスワード』をご利用ください。';
+      case 'auth/operation-not-allowed': return 'Firebaseコンソールでこの認証方式を有効にしてください。';
+      default: return '認証エラーが発生しました（' + (code || 'unknown') + '）。';
+    }
+  }
+
+  function getAuthAccountDisplayName(user) {
+    if (!user) return '';
+    if (user.email && user.email.endsWith('@puyotet.local')) {
+      return user.email.slice(0, -'@puyotet.local'.length);
+    }
+    return user.displayName || (user.email ? user.email.split('@')[0] : 'ACCOUNT');
+  }
+
+  function setCloudBadgeState(state) {
+    const badge = document.getElementById('cloudSyncBadge');
+    const topBtn = document.getElementById('btnAuthModal');
+    if (topBtn) {
+      if (fbUser) {
+        const label = getAuthAccountDisplayName(fbUser).slice(0, 12);
+        topBtn.textContent = `👤 ${label}`;
+        topBtn.classList.add('active');
+      } else {
+        topBtn.textContent = '👤 ログイン / 登録';
+        topBtn.classList.remove('active');
+      }
+    }
+    if (!badge) return;
+    badge.classList.remove('synced', 'syncing');
+    if (!fbUser) {
+      badge.textContent = '☁ クラウド保存：未ログイン（ゲスト）';
+    } else if (state === 'syncing') {
+      badge.textContent = '☁ クラウド同期中...';
+      badge.classList.add('syncing');
+    } else if (state === 'error') {
+      badge.textContent = '☁ クラウド保存：オフライン待機中';
+    } else {
+      badge.textContent = '☁ クラウド同期済';
+      badge.classList.add('synced');
+    }
+  }
+
+  function normalizeProfileData(parsed) {
+    const owned = Array.isArray(parsed.ownedThemes) && parsed.ownedThemes.length > 0
+      ? Array.from(new Set(['neon', ...parsed.ownedThemes.filter(id => THEMES[id])]))
+      : ['neon'];
+    const actTheme = (parsed.activeTheme && owned.includes(parsed.activeTheme)) ? parsed.activeTheme : 'neon';
+    const ownedSk = Array.isArray(parsed.ownedSkins) && parsed.ownedSkins.length > 0
+      ? Array.from(new Set(['classic', ...parsed.ownedSkins.filter(id => SKINS[id])]))
+      : ['classic'];
+    const actSkin = (parsed.activeSkin && ownedSk.includes(parsed.activeSkin)) ? parsed.activeSkin : 'classic';
+    const achs = Array.isArray(parsed.achievements) ? Array.from(new Set(parsed.achievements.filter(id => ACHIEVEMENTS.some(a => a.id === id)))) : [];
+    const actTitle = (parsed.activeTitle && achs.includes(parsed.activeTitle)) ? parsed.activeTitle : '';
+    return {
+      ...JSON.parse(JSON.stringify(defaultProfile)),
+      ...parsed,
+      coins: (typeof parsed.coins === 'number' && Number.isFinite(parsed.coins) && parsed.coins >= 0) ? Math.floor(parsed.coins) : 200,
+      ownedThemes: owned,
+      activeTheme: actTheme,
+      ownedSkins: ownedSk,
+      activeSkin: actSkin,
+      achievements: achs,
+      activeTitle: actTitle,
+      statsTotal: { tspins: (parsed.statsTotal && typeof parsed.statsTotal.tspins === 'number') ? parsed.statsTotal.tspins : 0 },
+      daily: (parsed.daily && typeof parsed.daily === 'object') ? parsed.daily : { date: '', missions: [] },
+      records: { ...defaultProfile.records, ...(parsed.records || {}) },
+      settings: {
+        ...defaultProfile.settings,
+        ...(parsed.settings || {}),
+        keys: { ...DEFAULT_KEYS, ...((parsed.settings && parsed.settings.keys) || {}) }
+      },
+      history: Array.isArray(parsed.history) ? parsed.history.slice(0, 10) : []
+    };
+  }
+
+  function scheduleCloudProfileSave() {
+    if (!fbReady || !fbDb || !fbUser) return;
+    setCloudBadgeState('syncing');
+    clearTimeout(fbSaveTimer);
+    fbSaveTimer = setTimeout(() => {
+      syncCloudNow(false);
+    }, 1500);
+  }
+
+  async function syncCloudNow(includeLeaderboard = true, showNotice = false) {
+    if (!fbReady || !fbDb || !fbUser) return false;
+    clearTimeout(fbSaveTimer);
+    setCloudBadgeState('syncing');
+    try {
+      const uid = fbUser.uid;
+      const cleanProfile = JSON.parse(JSON.stringify(profile));
+      cleanProfile.updatedAt = Date.now();
+      await fbDb.collection('users').doc(uid).set(cleanProfile, { merge: true });
+      if (includeLeaderboard) {
+        const pub = buildPublicRecord();
+        pub.uid = uid;
+        await fbDb.collection('leaderboard').doc(uid).set(pub, { merge: true });
+      }
+      setCloudBadgeState('synced');
+      if (showNotice) showToast('☁ クラウドと同期しました！');
+      return true;
+    } catch (e) {
+      setCloudBadgeState('error');
+      if (showNotice) showToast('⚠ クラウド同期に失敗しました（オフラインまたは権限設定を確認）');
+      return false;
+    }
+  }
+
+  async function loadOrMigrateCloudProfile(user) {
+    if (!fbReady || !fbDb || !user) return;
+    setCloudBadgeState('syncing');
+    try {
+      const ref = fbDb.collection('users').doc(user.uid);
+      const snap = await ref.get();
+      if (snap.exists && snap.data()) {
+        profile = normalizeProfileData(snap.data());
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(profile)); } catch (e) {}
+        renderProfileUI();
+        // Ensure leaderboard doc stays up to date
+        const pub = buildPublicRecord();
+        pub.uid = user.uid;
+        fbDb.collection('leaderboard').doc(user.uid).set(pub, { merge: true }).catch(() => {});
+        setCloudBadgeState('synced');
+        showToast(`☁ クラウドデータを読み込みました（${profile.name}）`);
+      } else {
+        // First login / registration: migrate guest local profile to Firestore
+        if (profile.name === 'PLAYER') {
+          const accName = getAuthAccountDisplayName(user).slice(0, 16);
+          if (accName) profile.name = accName;
+        }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(profile)); } catch (e) {}
+        await syncCloudNow(true, false);
+        renderProfileUI();
+        showToast('☁ ゲストの戦績をクラウドへ引き継ぎました！');
+      }
+    } catch (e) {
+      setCloudBadgeState('error');
+    }
+  }
+
+  async function fetchCloudLeaderboard() {
+    if (!fbReady || !fbDb) {
+      fbLeaderboardCache = null;
+      return;
+    }
+    try {
+      const snap = await fbDb.collection('leaderboard').orderBy('rating', 'desc').limit(50).get();
+      const rows = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d && typeof d.name === 'string') {
+          rows.push({
+            uid: doc.id,
+            deviceId: d.deviceId || '',
+            name: d.name.slice(0, 16),
+            title: d.title || '',
+            rating: Number(d.rating) || 1500,
+            wins: Number(d.wins) || 0,
+            losses: Number(d.losses) || 0,
+            bestSprintMs: (typeof d.bestSprintMs === 'number' && d.bestSprintMs > 0) ? d.bestSprintMs : null,
+            bestUltraScore: Number(d.bestUltraScore) || 0,
+            bestCheese10Ms: (typeof d.bestCheese10Ms === 'number' && d.bestCheese10Ms > 0) ? d.bestCheese10Ms : null,
+            bestCheese20Ms: (typeof d.bestCheese20Ms === 'number' && d.bestCheese20Ms > 0) ? d.bestCheese20Ms : null,
+            bestBr99Rank: (typeof d.bestBr99Rank === 'number' && d.bestBr99Rank >= 1) ? d.bestBr99Rank : null,
+            br99Wins: Number(d.br99Wins) || 0,
+            maxChain: Number(d.maxChain) || 0,
+            bestEndlessScore: Number(d.bestEndlessScore) || 0,
+            updatedAt: d.updatedAt || 0
+          });
+        }
+      });
+      fbLeaderboardCache = rows;
+    } catch (e) {
+      fbLeaderboardCache = null;
+    }
+  }
 
   /* =========================================================================
      1. UTILITIES, STORAGE, KEY CONFIG, RECORDS, ELO & RANK SYSTEM
@@ -2480,6 +2858,7 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
 
   function saveProfile(p) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); } catch (e) {}
+    scheduleCloudProfileSave();
   }
 
   let profile = loadProfile();
@@ -6340,6 +6719,7 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
         if (this.isOnline && net.conn && net.conn.open) {
           net.send({ type: 'lbSync', lbRecord: buildPublicRecord() });
         }
+        syncCloudNow(true, false);
       }
       saveLastReplaySnapshot();
       this.populateResultStats();
@@ -6704,6 +7084,7 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
       if (this.isOnline) {
         net.send({ type: 'lbSync', lbRecord: buildPublicRecord() });
       }
+      if (!this.isSpectate) syncCloudNow(true, false);
       saveLastReplaySnapshot();
       this.populateResultStats();
       document.getElementById('resRematchStatus').textContent = '';
@@ -6916,6 +7297,10 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
         e.preventDefault();
       }
 
+      if (code === 'Escape' && document.getElementById('overlayAuth').classList.contains('active')) {
+        document.getElementById('overlayAuth').classList.remove('active');
+        return;
+      }
       if (code === 'Escape' && document.getElementById('overlayHandling').classList.contains('active')) {
         if (sound.isPreviewBgm) sound.stopBGM();
         document.getElementById('overlayHandling').classList.remove('active');
@@ -7617,8 +8002,19 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
   });
 
   function renderLeaderboardUI() {
-    const selfRec = { ...buildPublicRecord(), isSelf: true };
-    const entries = [selfRec, ...remoteLeaderboard.map(p => ({ ...p, isSelf: false }))];
+    const selfRec = { ...buildPublicRecord(), uid: fbUser ? fbUser.uid : '', isSelf: true };
+    let entries;
+    const srcNote = document.getElementById('lbSourceNote');
+    if (fbReady && Array.isArray(fbLeaderboardCache)) {
+      const others = fbLeaderboardCache
+        .filter(p => !(fbUser && p.uid === fbUser.uid) && !(p.deviceId && p.deviceId === DEVICE_ID))
+        .map(p => ({ ...p, isSelf: false }));
+      entries = [selfRec, ...others];
+      if (srcNote) srcNote.textContent = '🌐 全国リアルタイムランキング（Cloud Firestore 上位50件・ログイン中の試合結果が自動反映されます）';
+    } else {
+      entries = [selfRec, ...remoteLeaderboard.map(p => ({ ...p, isSelf: false }))];
+      if (srcNote) srcNote.textContent = 'オンライン対戦（ランクマッチ・ルーム対戦）を行うと、対戦したプレイヤーの記録が自動で追加されます。';
+    }
 
     if (currentLbTab === 'rating') {
       entries.sort((a, b) => (b.rating - a.rating) || (b.wins - a.wins));
@@ -7728,6 +8124,9 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
     sound.unlock();
     renderLeaderboardUI();
     document.getElementById('overlayLeaderboard').classList.add('active');
+    if (fbReady && fbDb) {
+      fetchCloudLeaderboard().then(() => renderLeaderboardUI());
+    }
   });
   document.getElementById('btnCloseLeaderboard').addEventListener('click', () => {
     document.getElementById('overlayLeaderboard').classList.remove('active');
@@ -9659,7 +10058,8 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
       renderProfileUI();
       updateBr99RecordBanner();
 
-      // Sync leaderboard with online peers
+      // Sync leaderboard with online peers & Cloud Firestore
+      syncCloudNow(true, false);
       if (this.isOnline && !this.isLocalSimFallback) {
         const syncMsg = { type: 'lbSync', lbRecord: buildPublicRecord() };
         if (this.isHost) br99Net.broadcastToClients(syncMsg);
@@ -10118,6 +10518,145 @@ input[type="range"] { width: 100%; accent-color: var(--cyan); cursor: pointer; }
     if (replayPlayer.open) replayPlayer.update(dt);
     updateAndDrawFX(dt);
     requestAnimationFrame(loop);
+  }
+
+
+  /* =========================================================================
+     13. FIREBASE AUTH MODAL WIRING & STATE LISTENER
+     ========================================================================= */
+  let authMode = 'login'; // 'login' | 'register'
+
+  function renderAuthModalUI() {
+    const unconf = document.getElementById('authUnconfiguredBanner');
+    const outView = document.getElementById('authLoggedOutView');
+    const inView = document.getElementById('authLoggedInView');
+    const errEl = document.getElementById('authErrorMsg');
+    if (errEl) errEl.textContent = '';
+    if (unconf) unconf.style.display = fbReady ? 'none' : 'block';
+
+    if (fbUser) {
+      outView.style.display = 'none';
+      inView.style.display = 'block';
+      document.getElementById('authSignedName').textContent = `${profile.name} (${getAuthAccountDisplayName(fbUser)})`;
+      const isVirtualId = !!(fbUser.email && fbUser.email.endsWith('@puyotet.local'));
+      document.getElementById('authSignedMethod').textContent = `ログイン方式: ${isVirtualId ? 'ID＋パスワード' : 'Googleアカウント'}`;
+      document.getElementById('authSignedUid').textContent = `UID: ${fbUser.uid.slice(0, 10)}...`;
+    } else {
+      outView.style.display = 'block';
+      inView.style.display = 'none';
+      document.getElementById('authTabLogin').classList.toggle('active', authMode === 'login');
+      document.getElementById('authTabRegister').classList.toggle('active', authMode === 'register');
+      document.getElementById('authFormHeading').textContent = authMode === 'login'
+        ? 'ID＋パスワードでログイン（メール不要）'
+        : 'ID＋パスワードで新規登録（メール不要・戦績引き継ぎ）';
+      document.getElementById('btnAuthSubmit').textContent = authMode === 'login'
+        ? '🔑 ログインする'
+        : '✨ このIDで新規登録する';
+    }
+    setCloudBadgeState(fbUser ? 'synced' : 'guest');
+  }
+
+  function openAuthModal() {
+    sound.unlock();
+    renderAuthModalUI();
+    document.getElementById('overlayAuth').classList.add('active');
+  }
+
+  document.getElementById('btnAuthModal').addEventListener('click', openAuthModal);
+  document.getElementById('cloudSyncBadge').addEventListener('click', openAuthModal);
+  document.getElementById('btnCloseAuth').addEventListener('click', () => {
+    document.getElementById('overlayAuth').classList.remove('active');
+  });
+  document.querySelectorAll('[data-authtab]').forEach(tab => {
+    tab.addEventListener('click', () => {
+      authMode = tab.dataset.authtab;
+      renderAuthModalUI();
+    });
+  });
+
+  document.getElementById('btnAuthSubmit').addEventListener('click', async () => {
+    const errEl = document.getElementById('authErrorMsg');
+    errEl.textContent = '';
+    if (!fbReady || !fbAuth) {
+      errEl.textContent = 'Firebase設定（FIREBASE_CONFIG）が未設定のためログインできません。';
+      return;
+    }
+    const rawId = document.getElementById('authUserId').value.trim();
+    const pw = document.getElementById('authPassword').value;
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(rawId)) {
+      errEl.textContent = 'ユーザーIDは半角英数字・アンダーバーで3〜20文字にしてください。';
+      return;
+    }
+    if (!pw || pw.length < 6) {
+      errEl.textContent = 'パスワードは6文字以上にしてください。';
+      return;
+    }
+    const virtualEmail = rawId.toLowerCase() + '@puyotet.local';
+    const btn = document.getElementById('btnAuthSubmit');
+    btn.disabled = true;
+    try {
+      if (authMode === 'register') {
+        await fbAuth.createUserWithEmailAndPassword(virtualEmail, pw);
+        showToast('✨ アカウントを作成しました！');
+      } else {
+        await fbAuth.signInWithEmailAndPassword(virtualEmail, pw);
+        showToast('🔑 ログインしました！');
+      }
+      document.getElementById('authPassword').value = '';
+      document.getElementById('overlayAuth').classList.remove('active');
+    } catch (err) {
+      errEl.textContent = formatFirebaseAuthError(err);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btnAuthGoogle').addEventListener('click', async () => {
+    const errEl = document.getElementById('authErrorMsg');
+    errEl.textContent = '';
+    if (!fbReady || !fbAuth) {
+      errEl.textContent = 'Firebase設定（FIREBASE_CONFIG）が未設定のためログインできません。';
+      return;
+    }
+    const btn = document.getElementById('btnAuthGoogle');
+    btn.disabled = true;
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      await fbAuth.signInWithPopup(provider);
+      showToast('🔑 Googleアカウントでログインしました！');
+      document.getElementById('overlayAuth').classList.remove('active');
+    } catch (err) {
+      errEl.textContent = formatFirebaseAuthError(err);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btnAuthSyncNow').addEventListener('click', async () => {
+    sound.unlock();
+    await syncCloudNow(true, true);
+  });
+
+  document.getElementById('btnAuthLogout').addEventListener('click', async () => {
+    if (!fbReady || !fbAuth) return;
+    try {
+      await fbAuth.signOut();
+      fbUser = null;
+      renderAuthModalUI();
+      showToast('🚪 ログアウトしました（ゲストモード）');
+    } catch (e) {
+      showToast('ログアウトに失敗しました');
+    }
+  });
+
+  if (fbReady && fbAuth) {
+    fbAuth.onAuthStateChanged((user) => {
+      fbUser = user || null;
+      renderAuthModalUI();
+      if (fbUser) {
+        loadOrMigrateCloudProfile(fbUser);
+      }
+    });
   }
 
   window.addEventListener('load', () => {
