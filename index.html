@@ -1841,20 +1841,9 @@ body.theme-light .lb-summary { color: var(--text-main); }
       </div>
     </div>
 
-    <!-- Pane 4: Save Data Export / Import -->
+    <!-- Pane 4: Replay Data -->
     <div id="setpane-data" class="set-pane">
-      <div class="form-row">
-        <label class="form-label" for="exportCodeArea">📤 引き継ぎコード（エクスポート）</label>
-        <textarea id="exportCodeArea" class="input-field" rows="3" readonly style="font-family:monospace;font-size:0.72rem;resize:none;word-break:break-all;"></textarea>
-        <button class="btn btn-ghost" id="btnCopySaveCode" style="width:100%;margin-top:6px;padding:8px;font-size:0.82rem;">📋 引き継ぎコードをコピー</button>
-      </div>
-      <div class="form-row" style="margin-bottom:8px;">
-        <label class="form-label" for="importCodeArea">📥 引き継ぎコードを読み込む（インポート）</label>
-        <textarea id="importCodeArea" class="input-field" rows="3" placeholder="別端末でコピーした引き継ぎコードを貼り付け..." style="font-family:monospace;font-size:0.72rem;resize:none;"></textarea>
-        <div id="importErrorMsg" style="font-size:0.74rem;color:#f87171;min-height:16px;margin-top:4px;"></div>
-        <button class="btn btn-green" id="btnImportSaveCode" style="width:100%;margin-top:4px;padding:8px;font-size:0.84rem;">📥 データを読み込む</button>
-      </div>
-      <div class="form-row" style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.18);margin-bottom:4px;">
+      <div class="form-row" style="margin-top:4px;margin-bottom:4px;">
         <span class="form-label">🎬 リプレイファイル再生</span>
         <input type="file" id="replayFileInput" accept=".json,application/json" style="display:none;">
         <button class="btn btn-primary" id="btnLoadReplayFile" style="width:100%;padding:8px;font-size:0.82rem;">📂 リプレイ読込 (.json)</button>
@@ -2212,7 +2201,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
   let fbReady = false;
   let fbUser = null;
   let fbSaveTimer = null;
-  let fbLeaderboardCache = null; // null = not fetched / offline fallback
+  let fbLeaderboardCache = null;
 
   function isFirebaseConfigured() {
     return !!(
@@ -2375,14 +2364,12 @@ body.theme-light .lb-summary { color: var(--text-main); }
         profile = normalizeProfileData(snap.data());
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(profile)); } catch (e) {}
         renderProfileUI();
-        // Ensure leaderboard doc stays up to date
         const pub = buildPublicRecord();
         pub.uid = user.uid;
         fbDb.collection('leaderboard').doc(user.uid).set(pub, { merge: true }).catch(() => {});
         setCloudBadgeState('synced');
         showToast(`☁ クラウドデータを読み込みました（${profile.name}）`);
       } else {
-        // First login / registration: migrate guest local profile to Firestore
         if (profile.name === 'PLAYER') {
           const accName = getAuthAccountDisplayName(user).slice(0, 16);
           if (accName) profile.name = accName;
@@ -2437,9 +2424,9 @@ body.theme-light .lb-summary { color: var(--text-main); }
   /* =========================================================================
      1. UTILITIES, STORAGE, KEY CONFIG, RECORDS, ELO & RANK SYSTEM
      ========================================================================= */
-  const STORAGE_KEY = 'puyotet_online_profile_v1';
-  const DEVICE_ID_KEY = 'puyotet_device_id_v1';
-  const LEADERBOARD_KEY = 'puyotet_leaderboard_v1';
+  const STORAGE_KEY = 'puyotet_online_profile_v2';
+  const DEVICE_ID_KEY = 'puyotet_device_id_v2';
+  const LEADERBOARD_KEY = 'puyotet_leaderboard_v2';
 
   function getOrCreateDeviceId() {
     try {
@@ -2797,7 +2784,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
   }
 
   let activeThemeObj = THEMES.neon;
-  let admQueueMode = 'normal'; // 'normal' | 'I' | 'T' (offline debug only)
+  let admQueueMode = 'normal';
 
   function applyTheme(themeId) {
     const t = THEMES[themeId] || THEMES.neon;
@@ -2821,36 +2808,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return JSON.parse(JSON.stringify(defaultProfile));
       const parsed = JSON.parse(raw);
-      const owned = Array.isArray(parsed.ownedThemes) && parsed.ownedThemes.length > 0
-        ? Array.from(new Set(['neon', ...parsed.ownedThemes.filter(id => THEMES[id])]))
-        : ['neon'];
-      const actTheme = (parsed.activeTheme && owned.includes(parsed.activeTheme)) ? parsed.activeTheme : 'neon';
-      const ownedSk = Array.isArray(parsed.ownedSkins) && parsed.ownedSkins.length > 0
-        ? Array.from(new Set(['classic', ...parsed.ownedSkins.filter(id => SKINS[id])]))
-        : ['classic'];
-      const actSkin = (parsed.activeSkin && ownedSk.includes(parsed.activeSkin)) ? parsed.activeSkin : 'classic';
-      const achs = Array.isArray(parsed.achievements) ? Array.from(new Set(parsed.achievements.filter(id => ACHIEVEMENTS.some(a => a.id === id)))) : [];
-      const actTitle = (parsed.activeTitle && achs.includes(parsed.activeTitle)) ? parsed.activeTitle : '';
-      return {
-        ...JSON.parse(JSON.stringify(defaultProfile)),
-        ...parsed,
-        coins: (typeof parsed.coins === 'number' && Number.isFinite(parsed.coins) && parsed.coins >= 0) ? Math.floor(parsed.coins) : 200,
-        ownedThemes: owned,
-        activeTheme: actTheme,
-        ownedSkins: ownedSk,
-        activeSkin: actSkin,
-        achievements: achs,
-        activeTitle: actTitle,
-        statsTotal: { tspins: (parsed.statsTotal && typeof parsed.statsTotal.tspins === 'number') ? parsed.statsTotal.tspins : 0 },
-        daily: (parsed.daily && typeof parsed.daily === 'object') ? parsed.daily : { date: '', missions: [] },
-        records: { ...defaultProfile.records, ...(parsed.records || {}) },
-        settings: {
-          ...defaultProfile.settings,
-          ...(parsed.settings || {}),
-          keys: { ...DEFAULT_KEYS, ...((parsed.settings && parsed.settings.keys) || {}) }
-        },
-        history: Array.isArray(parsed.history) ? parsed.history.slice(0, 10) : []
-      };
+      return normalizeProfileData(parsed);
     } catch (e) {
       return JSON.parse(JSON.stringify(defaultProfile));
     }
@@ -2900,7 +2858,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
 
   function upsertLeaderboardPlayer(rec) {
     if (!rec || typeof rec !== 'object' || typeof rec.name !== 'string') return;
-    if (rec.deviceId && rec.deviceId === DEVICE_ID) return; // Self is always live from profile
+    if (rec.deviceId && rec.deviceId === DEVICE_ID) return;
     const clean = {
       deviceId: typeof rec.deviceId === 'string' ? rec.deviceId : '',
       name: rec.name.slice(0, 16) || 'RIVAL',
@@ -3000,7 +2958,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
     constructor() {
       this.ctx = null;
       this.bgmTimer = null;
-      this.bgmTrack = 'tetris'; // 'tetris' | 'puyo'
+      this.bgmTrack = 'tetris';
       this.bgmStepTetris = 0;
       this.bgmStepPuyo = 0;
       this.bgmPlaying = false;
@@ -3131,7 +3089,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       if (this.bgmPlaying) return;
       this.bgmPlaying = true;
       this.bgmIgnoreMute = !!ignoreMute;
-      // Track 1: Tetris (Korobeiniki-inspired chiptune)
       const tetrisMelody = [
         659, 0, 494, 523, 587, 0, 523, 494, 440, 0, 440, 523, 659, 0, 587, 523,
         494, 0, 494, 523, 587, 0, 659, 0, 523, 0, 440, 0, 440, 0, 0, 0,
@@ -3144,7 +3101,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
         147, 294, 147, 294, 175, 349, 175, 349, 131, 262, 131, 262, 165, 330, 123, 247,
         123, 247, 165, 330, 110, 220, 131, 262, 110, 220, 110, 0, 110, 0, 0, 0
       ];
-      // Track 2: Puyo-style upbeat bright arcade chiptune (C-major / bouncy syncopation)
       const puyoMelody = [
         523, 659, 784, 1046, 0, 988, 784, 659, 698, 880, 1046, 880, 784, 0, 659, 0,
         587, 659, 698, 784, 880, 0, 784, 698, 659, 784, 1046, 0, 988, 0, 784, 0,
@@ -3790,7 +3746,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       } else {
         this.combo = -1;
         if (this.isLocal) sound.playSE('lock');
-        // Official rule: only fire ready (delay <= 0) garbage on non-clearing lock
         const isBr99Mode = (typeof br99 !== 'undefined' && br99.isOpen);
         const maxRise = isBr99Mode ? 12 : 8;
         let readyLines = 0;
@@ -3819,14 +3774,12 @@ body.theme-light .lb-summary { color: var(--text-main); }
         }
       }
 
-      // Check 40-Line Sprint completion
       if (this.isLocal && battle.soloSubType === 'sprint40' && this.lines >= 40) {
         this.current = null;
         battle.finishChallenge(true);
         return;
       }
 
-      // Check Cheese Race replenishment & completion
       if (this.isLocal && battle.soloSubType === 'cheese') {
         while (this.cheeseRemainingReserve > 0 && this.countCheeseRowsOnBoard() < 10) {
           this.pushCheeseRow();
@@ -3901,14 +3854,13 @@ body.theme-light .lb-summary { color: var(--text-main); }
     receiveGarbage(linesFloat, customDelay = null) {
       if (!linesFloat || linesFloat <= 0) return;
       const isBr99Mode = (typeof br99 !== 'undefined' && br99.isOpen);
-      let delay = 0.8; // Official Puyo Puyo Tetris VS/SWAP grace period
+      let delay = 0.8;
       let addLines = linesFloat;
 
       if (isBr99Mode) {
         const aliveCnt = br99.getAlivePlayers().length;
-        // Official Tetris 99 grace period: 5.0s (99-51), 3.0s (50-11), 1.0s (TOP 10)
         delay = aliveCnt <= 10 ? 1.0 : (aliveCnt <= 50 ? 3.0 : 5.0);
-        const roomLeft = Math.max(0, 12 - this.pendingGarbage); // Max 12-line queue cap
+        const roomLeft = Math.max(0, 12 - this.pendingGarbage);
         addLines = Math.min(linesFloat, roomLeft);
       }
       if (typeof customDelay === 'number' && customDelay >= 0) delay = customDelay;
@@ -4211,7 +4163,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       return false;
     }
 
-    // Used only by CPU AI (human Puyo hard drop is completely disabled)
     hardDrop() {
       if (this.dead || this.phase !== 'active' || !this.current) return;
       while (this.move(0, 1, true)) {}
@@ -4405,7 +4356,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
     }
 
     dropOjamaBatch() {
-      const maxDrop = 30; // Official Tsu 1-rock (5 rows) cap per turn
+      const maxDrop = 30;
       const amount = Math.min(maxDrop, Math.floor(this.pendingGarbage));
       this.pendingGarbage = Math.max(0, this.pendingGarbage - amount);
       if (this.pendingGarbage < 0.001) this.pendingGarbage = 0;
@@ -4550,7 +4501,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
     } else if (skin === 'crystal') {
       ctx.fillStyle = color;
       ctx.fillRect(x + 1, y + 1, s - 2, s - 2);
-      // Faceted diamond triangles
       ctx.fillStyle = 'rgba(255,255,255,0.48)';
       ctx.beginPath(); ctx.moveTo(x + 1, y + 1); ctx.lineTo(x + s - 1, y + 1); ctx.lineTo(x + s / 2, y + s / 2); ctx.closePath(); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,0.22)';
@@ -4582,7 +4532,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       ctx.fillRect(x + s * 0.25, y + s * 0.25, s * 0.5, s * 0.5);
     }
 
-    // Colorblind high-contrast outline + subtle shape motif
     if (profile.settings.colorblind && s >= 12) {
       ctx.strokeStyle = 'rgba(255,255,255,0.75)';
       ctx.lineWidth = 1.4;
@@ -4619,22 +4568,18 @@ body.theme-light .lb-summary { color: var(--text-main); }
     ctx.strokeStyle = 'rgba(0,0,0,0.8)';
     ctx.lineWidth = Math.max(1.4, size * 0.18);
     if (colorCode === 1) {
-      // Red: Filled Circle ●
       ctx.beginPath(); ctx.arc(cx, cy, size * 0.48, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     } else if (colorCode === 2) {
-      // Blue: Upward Triangle ▲
       ctx.beginPath();
       ctx.moveTo(cx, cy - size * 0.56);
       ctx.lineTo(cx + size * 0.55, cy + size * 0.44);
       ctx.lineTo(cx - size * 0.55, cy + size * 0.44);
       ctx.closePath(); ctx.fill(); ctx.stroke();
     } else if (colorCode === 3) {
-      // Green: Square ■
       const d = size * 0.46;
       ctx.fillRect(cx - d, cy - d, d * 2, d * 2);
       ctx.strokeRect(cx - d, cy - d, d * 2, d * 2);
     } else if (colorCode === 4) {
-      // Yellow: 5-point Star ★
       ctx.beginPath();
       for (let i = 0; i < 10; i++) {
         const rad = (i % 2 === 0) ? size * 0.62 : size * 0.27;
@@ -4644,7 +4589,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       }
       ctx.closePath(); ctx.fill(); ctx.stroke();
     } else if (colorCode === 5) {
-      // Purple: Diamond ◆
       ctx.beginPath();
       ctx.moveTo(cx, cy - size * 0.58);
       ctx.lineTo(cx + size * 0.52, cy);
@@ -4768,7 +4712,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
             ctx.moveTo(exR + er * 0.9, ey - er * 1.1); ctx.lineTo(exR - er * 0.9, ey - er * 0.55);
             ctx.stroke();
           } else if (colorCode === 5) {
-            // Purple: Cool half-lidded sleek eyes
             ctx.fillStyle = pal.dark;
             ctx.fillRect(exL - er * 1.05, ey - er * 1.05, er * 2.1, er * 0.72);
             ctx.fillRect(exR - er * 1.05, ey - er * 1.05, er * 2.1, er * 0.72);
@@ -4872,11 +4815,11 @@ body.theme-light .lb-summary { color: var(--text-main); }
         if (curBottom <= by) break;
         const segH = Math.min(curBottom - by, g.lines * cell);
         if (segH <= 0.5) continue;
-        let col = '#eab308'; // Yellow: grace period
+        let col = '#eab308';
         if (g.delay <= 0) {
-          col = flashOn ? '#ef4444' : '#fca5a5'; // Red flashing: ready to fire
+          col = flashOn ? '#ef4444' : '#fca5a5';
         } else if (g.delay <= (g.maxDelay || 1) * 0.45) {
-          col = '#f97316'; // Orange: approaching
+          col = '#f97316';
         }
         ctx.fillStyle = col;
         if (g.delay <= 0 && !(activeThemeObj && activeThemeObj.noGlow)) {
@@ -5327,14 +5270,12 @@ body.theme-light .lb-summary { color: var(--text-main); }
     return { grid: kept, lines, filled, y };
   }
 
-  // Detect ready T-Spin Double overhang cavities in a Tetris grid
   function countTSpinSlots(grid) {
     let slots = 0;
     for (let r = 10; r < 21; r++) {
       for (let c = 1; c < 9; c++) {
         if (!grid[r][c] && grid[r][c - 1] && grid[r][c + 1] &&
             !grid[r - 1][c] && !grid[r - 1][c - 1] && !grid[r - 1][c + 1]) {
-          // Overhang roof on either left or right shoulder
           const roofL = grid[r - 2][c - 1] && !grid[r - 2][c];
           const roofR = grid[r - 2][c + 1] && !grid[r - 2][c];
           if (roofL !== roofR) slots++;
@@ -5406,16 +5347,13 @@ body.theme-light .lb-summary { color: var(--text-main); }
       else { b.hardDrop(); this.tetrisMoves++; this.plan = null; }
     }
 
-    // Opening Book heuristic for TKI 3 / DT Cannon / PCO in early 1st-2nd bag (HARD & IMPOSSIBLE)
     evalTetrisOpeningBonus(type, x, rot, heights, maxH) {
       if (this.tetrisMoves >= 9 || maxH > 5) return 0;
       let bonus = 0;
-      // TKI 3 / PCO clean foundation: I horizontal at bottom-left, O/L/J building 4-wide left box, S/Z forming TSD overhang
       if (type === 'I' && rot === 0 && (x === 0 || x === 3)) bonus += 6.5;
       if (type === 'O' && (x === 0 || x === 7)) bonus += 4.5;
       if ((type === 'L' || type === 'J') && (x <= 2 || x >= 6)) bonus += 3.5;
       if ((type === 'S' || type === 'Z') && x >= 1 && x <= 6 && (rot === 0 || rot === 2)) bonus += 3.5;
-      // Keep col 9 or col 2 clean for early TSD/Tetris
       if (heights[9] === 0 && heights[8] >= 1) bonus += 2.0;
       return bonus;
     }
@@ -5446,7 +5384,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
         return lines * 5.2 - aggH * 0.50 - holes * holePen - bump * 0.28 + (Math.random() - 0.5) * noise;
       }
 
-      // HARD & IMPOSSIBLE Pro Heuristic
       const isImp = this.difficulty === 'impossible';
       let score = 0;
       if (isPerfect) score += 340;
@@ -5461,16 +5398,13 @@ body.theme-light .lb-summary { color: var(--text-main); }
         else score -= (b.b2b ? 5.2 : 1.5);
       }
 
-      // T-Spin Overhang Roof Bonus (actively builds TSD setups!)
       if (maxH < 14) {
         const tSlots = countTSpinSlots(grid);
         if (tSlots > 0) score += tSlots * (isImp ? 14.5 : 8.5);
       }
 
-      // Opening Book bonus (TKI 3 / DT / PCO foundation)
       score += this.evalTetrisOpeningBonus(type, x, rot, heights, maxH);
 
-      // Clean right-edge well for Tetrises
       if (maxH < 12 && heights[9] === 0 && heights[8] >= 2) score += 2.8;
       score -= holes * (isImp ? 10.5 : 8.5) + coveredCells * 0.18 + aggH * 0.45 + bump * 0.36;
       if (maxH >= 15) score -= (maxH - 14) * 5.5;
@@ -5513,7 +5447,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
         if (holdType && holdType !== b.current.type) candidates.push({ type: holdType, useHold: true });
       }
 
-      // 2-Ply Perfect Clear Search (opening & near-empty boards)
       if (isImp || isHard) {
         let filled = 0;
         for (let r = 0; r < b.rows; r++) for (let c = 0; c < b.cols; c++) if (b.grid[r][c]) filled++;
@@ -5535,7 +5468,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
           }
         }
 
-        // SRS T-Spin Rotation-In Search (HARD & IMPOSSIBLE, natural steps!)
         if ((isImp || isHard) && type === 'T') {
           for (let fromRot = 0; fromRot < 4; fromRot++) {
             for (let x = -1; x < b.cols - 1; x++) {
@@ -5578,7 +5510,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       if (ply1List.length === 0) return { x: b.current.x, y: 0, rot: 0, score: 0, ref: b.current, useHold: false, tspinDir: 0 };
       ply1List.sort((a, z) => z.score - a.score);
 
-      // IMPOSSIBLE: 2-Ply Beam Search (Top-5 1st-ply candidates + NEXT piece)
       if (!isImp || ply1List[0].score >= 250) return ply1List[0];
       const beam = ply1List.slice(0, 5);
       let best = beam[0], bestTotal = -1e9;
@@ -5618,19 +5549,18 @@ body.theme-light .lb-summary { color: var(--text-main); }
       const pot = probeMaxPotentialChain(sim.grid, triggerDepth);
       if (sim.isChigiri) sc -= isImp ? 7.5 : 4.0;
 
-      // Secondary Counter (副砲) vs Main Chain (本線) decision
       if (sim.chain > 0) {
         if (isImp) {
           if (sim.chain >= 10) sc += 820 + sim.chain * 75;
-          else if (pendingGarbage >= 24 && sim.chain >= 5) sc += 420 + sim.chain * 42; // Lethal -> fire main!
+          else if (pendingGarbage >= 24 && sim.chain >= 5) sc += 420 + sim.chain * 42;
           else if (danger && sim.chain >= 2 && sim.chain <= 4 && sim.totalOjamas >= pendingGarbage * 0.65 && pot >= 6) {
-            sc += 340 + pot * 25; // Ideal secondary counter preserving main chain!
+            sc += 340 + pot * 25;
           } else if (danger && sim.chain >= 2 && (sim.totalOjamas >= pendingGarbage * 0.65 || sim.chain >= 5)) {
             sc += 270 + sim.chain * 34;
           } else if (curCount >= 52 && sim.chain >= 4) {
             sc += 210 + sim.chain * 32;
           } else {
-            sc -= 95 - sim.chain * 8; // Strict accidental pop suppression
+            sc -= 95 - sim.chain * 8;
           }
         } else {
           if (sim.chain >= 4) sc += 200 + sim.chain * 38;
@@ -5640,18 +5570,16 @@ body.theme-light .lb-summary { color: var(--text-main); }
         }
       }
 
-      // High-chain potential reward (scales strongly toward 10-14 chains)
       sc += pot * (isImp ? 44 : 26) + (pot >= 8 ? (pot - 7) * 18 : 0);
 
-      // Opening Book (1st-6th pairs): GTR L-Fold + Cushion + Trigger + Right Tail template
       if (this.puyoMoves < 6 && curCount <= 14) {
         const g = sim.grid;
-        if (g[12][0] && g[12][0] === g[12][1]) sc += 16; // GTR bottom cushion
-        if (g[11][0] && g[10][1] && g[11][0] === g[10][1]) sc += 18; // GTR L-fold diagonal
-        if (g[11][0] && g[12][0] && g[11][0] !== g[12][0]) sc += 8; // Clean color separation
-        if (g[12][3] && g[12][3] === g[11][3]) sc += 8; // Right-side stair/key pillar
+        if (g[12][0] && g[12][0] === g[12][1]) sc += 16;
+        if (g[11][0] && g[10][1] && g[11][0] === g[10][1]) sc += 18;
+        if (g[11][0] && g[12][0] && g[11][0] !== g[12][0]) sc += 8;
+        if (g[12][3] && g[12][3] === g[11][3]) sc += 8;
         if (g[12][4] && g[12][4] === g[11][4]) sc += 8;
-        if (g[12][2] === 0) sc += 5; // Keep center trigger column low early
+        if (g[12][2] === 0) sc += 5;
       }
 
       const vis = Array.from({ length: 13 }, () => new Uint8Array(6));
@@ -5682,7 +5610,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
       }
       if (isImp) {
         if (sim.grid[12][0] && sim.grid[12][0] === sim.grid[12][1]) sc += 9;
-        if (sim.grid[11][0] && sim.grid[11][0] === sim.grid[10][1]) sc += 8;
+        if (sim.grid[11][0] && sim.grid[10][1] && sim.grid[11][0] === sim.grid[10][1]) sc += 8;
         sc -= Math.max(0, colH[2] - 6) * 14;
         for (let c = 0; c < 6; c++) if (colH[c] >= 11) sc -= 30;
       } else {
@@ -6085,7 +6013,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
             this.targetWins = msg.targetWins || this.targetWins;
             this.puyoColors = msg.puyoColors || this.puyoColors;
             this.hostAtk = msg.hostAtk || 100; this.guestAtk = msg.guestAtk || 100;
-            // Guest reverses host/guest attack multipliers
             startOnlineMatch(this.rule, this.rated, this.myStyle, this.oppInfo, this.targetWins, this.puyoColors, this.guestAtk, this.hostAtk);
             break;
           case 'state':
@@ -6163,7 +6090,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
     isSolo: false,
     isCpu: false,
     isSpectate: false,
-    soloSubType: null, // 'endless_tetris'|'endless_puyo'|'endless_swap'|'sprint40'|'ultra2m'
+    soloSubType: null,
     rule: 'vs',
     rated: false,
     targetWins: 1,
@@ -6436,7 +6363,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       chBan.classList.toggle('active', isChallenge);
       chBan.classList.remove('warn');
 
-      // Hide stamps in offline solo & CPU spectate
       const hideStamps = this.isSolo || this.isSpectate;
       document.getElementById('battleStampBar').classList.toggle('hidden', hideStamps);
       document.getElementById('resultStampBar').classList.toggle('hidden', hideStamps);
@@ -6507,7 +6433,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       document.getElementById('selfPpsHud').textContent = `PPS ${pps.toFixed(2)}`;
       document.getElementById('selfApmHud').textContent = `APM ${apm.toFixed(1)}`;
 
-      // Challenge Banner (Sprint40 / Ultra2m)
       if (this.soloSubType === 'sprint40') {
         const rem = Math.max(0, 40 - this.selfTetris.lines);
         document.getElementById('challengeBanner').textContent =
@@ -6581,7 +6506,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       else this.oppWins++;
       this.updateHUD();
 
-      // Check if match is decided (reached targetWins)
       if (this.selfWins >= this.targetWins || this.oppWins >= this.targetWins) {
         const finalWon = this.selfWins >= this.targetWins;
         const scoreSuffix = this.targetWins > 1 ? ` (${this.selfWins} - ${this.oppWins})` : '';
@@ -6589,7 +6513,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
         return;
       }
 
-      // Intermediate Round Transition (~2.0s)
       this.active = false;
       this.roundIntermission = true;
       sound.playSE(selfWon ? 'win' : 'lose');
@@ -6783,7 +6706,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       if (!this.active || this.paused || this.ended || this.roundIntermission) return;
       this.stats.elapsedSec += dt;
 
-      // 2-Minute Ultra countdown
       if (this.soloSubType === 'ultra2m') {
         this.ultraRemaining -= dt;
         if (this.ultraRemaining <= 0) {
@@ -6846,7 +6768,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
         this.dangerBeepTimer = 0;
       }
 
-      // Left / Self Side Update
       if (this.isSpectate) {
         const leftSt = this.getActiveStyle(true);
         this.leftCpu.update(dt, leftSt, this.selfTetris, this.selfPuyo);
@@ -6859,7 +6780,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
         else this.selfPuyo.update(dt, softHeld);
       }
 
-      // Right / Opponent CPU Update
       if (this.isCpu || this.isSpectate) {
         const oppSt = this.getActiveStyle(false);
         this.cpu.update(dt, oppSt, this.oppTetris, this.oppPuyo);
@@ -6887,7 +6807,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
         }
       }
 
-      // Lightweight Replay Recording (~0.15s interval, max 1200 frames = ~3 min)
       this.replayAccum += dt;
       if (this.replayAccum >= 0.15 && this.replayFrames.length < 1200) {
         this.replayAccum -= 0.15;
@@ -6953,7 +6872,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       const oldRank = getRankTier(oldRating);
       let delta = 0, newRating = oldRating, isUpset = false;
 
-      // Elo rating & match history saved ONCE at final match resolution (FT2 score-adjusted)
       const scoreTag = this.targetWins > 1 ? `${this.selfWins}-${this.oppWins}` : '';
       if (this.isOnline && this.rated) {
         const prev = calcEloPreview(oldRating, this.oppInfo.rating);
@@ -7015,7 +6933,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       }
       document.getElementById('resSub').textContent = reasonText;
 
-      // ARENA COIN Rewards (excluded in CPU Spectate)
       let earnedCoins = 0;
       if (!this.isSpectate) {
         addDailyProgress('play2', 1);
@@ -7187,13 +7104,11 @@ body.theme-light .lb-summary { color: var(--text-main); }
     dasTimer: 0,
     arrTimer: 0,
 
-    // Check if a keyboard code matches a configured action (with safe default aliases)
     getActionForKey(code) {
       const k = profile.settings.keys || DEFAULT_KEYS;
       for (const act of Object.keys(DEFAULT_KEYS)) {
         if (k[act] === code) return act;
       }
-      // Secondary convenience aliases (only if not explicitly bound to another action)
       const boundSet = new Set(Object.values(k));
       if (!boundSet.has(code)) {
         if (code === 'Space') return 'hard';
@@ -7259,7 +7174,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
         this.horizDir = 1; this.dasTimer = 0; this.arrTimer = 0;
         board.move(1, 0);
       } else if (act === 'hard') {
-        // Hard drop ONLY in Tetris (strictly disabled in Puyo)
         if (style === 'tetris') board.hardDrop();
       } else if (act === 'cw') {
         board.rotate(1);
@@ -7273,7 +7187,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
     },
 
     onKeyDown(e) {
-      // Keybind listening mode in Settings modal
       if (listeningKeyAction) {
         e.preventDefault();
         if (e.code === 'Escape') {
@@ -7619,78 +7532,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
     renderProfileUI();
   }
 
-  // UTF-8 safe Base64 Save Data Export / Import
-  function encodeProfileCode(obj) {
-    const bytes = new TextEncoder().encode(JSON.stringify(obj));
-    let bin = '';
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    return btoa(bin);
-  }
-
-  function decodeAndValidateProfile(raw) {
-    const clean = String(raw || '').trim().replace(/\s+/g, '');
-    if (!clean) throw new Error('コードが空です');
-    const bin = atob(clean);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const json = new TextDecoder().decode(bytes);
-    const parsed = JSON.parse(json);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('データ形式が不正です');
-    }
-    if (typeof parsed.name !== 'string' || typeof parsed.rating !== 'number' || !Number.isFinite(parsed.rating) || parsed.rating < 0) {
-      throw new Error('プロフィール項目（名前・レート）が不正です');
-    }
-    if (typeof parsed.wins !== 'number' || typeof parsed.losses !== 'number' || parsed.wins < 0 || parsed.losses < 0) {
-      throw new Error('戦績データが不正です');
-    }
-    return {
-      ...JSON.parse(JSON.stringify(defaultProfile)),
-      ...parsed,
-      name: parsed.name.slice(0, 16) || 'PLAYER',
-      rating: Math.max(0, Math.round(parsed.rating)),
-      maxRating: Math.max(Math.round(parsed.rating), Math.round(parsed.maxRating || 1500)),
-      wins: Math.max(0, Math.floor(parsed.wins)),
-      losses: Math.max(0, Math.floor(parsed.losses)),
-      streak: Math.max(0, Math.floor(parsed.streak || 0)),
-      bestStreak: Math.max(0, Math.floor(parsed.bestStreak || 0)),
-      coins: (typeof parsed.coins === 'number' && Number.isFinite(parsed.coins) && parsed.coins >= 0) ? Math.floor(parsed.coins) : 200,
-      ownedThemes: Array.isArray(parsed.ownedThemes)
-        ? Array.from(new Set(['neon', ...parsed.ownedThemes.filter(id => THEMES[id])]))
-        : ['neon'],
-      activeTheme: (parsed.activeTheme && THEMES[parsed.activeTheme] && (!Array.isArray(parsed.ownedThemes) || parsed.ownedThemes.includes(parsed.activeTheme) || parsed.activeTheme === 'neon'))
-        ? parsed.activeTheme : 'neon',
-      ownedSkins: Array.isArray(parsed.ownedSkins)
-        ? Array.from(new Set(['classic', ...parsed.ownedSkins.filter(id => SKINS[id])]))
-        : ['classic'],
-      activeSkin: (parsed.activeSkin && SKINS[parsed.activeSkin] && (!Array.isArray(parsed.ownedSkins) || parsed.ownedSkins.includes(parsed.activeSkin) || parsed.activeSkin === 'classic'))
-        ? parsed.activeSkin : 'classic',
-      achievements: Array.isArray(parsed.achievements)
-        ? Array.from(new Set(parsed.achievements.filter(id => ACHIEVEMENTS.some(a => a.id === id))))
-        : [],
-      activeTitle: (parsed.activeTitle && Array.isArray(parsed.achievements) && parsed.achievements.includes(parsed.activeTitle))
-        ? parsed.activeTitle : '',
-      statsTotal: { tspins: (parsed.statsTotal && typeof parsed.statsTotal.tspins === 'number') ? parsed.statsTotal.tspins : 0 },
-      daily: (parsed.daily && typeof parsed.daily === 'object') ? parsed.daily : { date: '', missions: [] },
-      records: { ...defaultProfile.records, ...(parsed.records || {}) },
-      settings: {
-        ...defaultProfile.settings,
-        ...(parsed.settings || {}),
-        keys: { ...DEFAULT_KEYS, ...((parsed.settings && parsed.settings.keys) || {}) }
-      },
-      history: Array.isArray(parsed.history) ? parsed.history.slice(0, 10) : []
-    };
-  }
-
-  function refreshExportCode() {
-    const area = document.getElementById('exportCodeArea');
-    if (area) {
-      try { area.value = encodeProfileCode(profile); } catch (e) { area.value = ''; }
-    }
-    const errEl = document.getElementById('importErrorMsg');
-    if (errEl) errEl.textContent = '';
-  }
-
   // Settings Modal Events
   document.querySelectorAll('.set-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -7700,45 +7541,13 @@ body.theme-light .lb-summary { color: var(--text-main); }
       tab.classList.add('active');
       document.getElementById('setpane-' + tab.dataset.settab).classList.add('active');
       renderKeybindUI();
-      if (tab.dataset.settab === 'data') refreshExportCode();
     });
-  });
-
-  document.getElementById('btnCopySaveCode').addEventListener('click', () => {
-    refreshExportCode();
-    const code = document.getElementById('exportCodeArea').value;
-    if (!code) return;
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(code).then(() => showToast('引き継ぎコードをコピーしました')).catch(() => fallbackCopy(code));
-    } else {
-      fallbackCopy(code);
-    }
-  });
-
-  document.getElementById('btnImportSaveCode').addEventListener('click', () => {
-    const raw = document.getElementById('importCodeArea').value;
-    const errEl = document.getElementById('importErrorMsg');
-    try {
-      const nextProf = decodeAndValidateProfile(raw);
-      profile = nextProf;
-      saveProfile(profile);
-      renderProfileUI();
-      refreshExportCode();
-      document.getElementById('importCodeArea').value = '';
-      errEl.textContent = '';
-      sound.playSE('rankUp');
-      showToast('セーブデータを読み込みました！');
-    } catch (e) {
-      errEl.textContent = '⚠ 読み込みエラー: 無効な引き継ぎコードです';
-      showToast('無効な引き継ぎコードのため読み込みを中止しました');
-    }
   });
 
   document.getElementById('btnHandlingModal').addEventListener('click', () => {
     sound.unlock();
     listeningKeyAction = null;
     syncSettingsUI();
-    refreshExportCode();
     document.getElementById('overlayHandling').classList.add('active');
   });
   document.getElementById('btnCloseHandling').addEventListener('click', () => {
@@ -8160,7 +7969,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
     sound.playSE('move');
   });
 
-  // Stealth 7-tap Admin Trigger on #brandHomeBtn (within 2.5s, zero visible traces)
+  // Stealth 7-tap Admin Trigger on #brandHomeBtn
   let admTapTimes = [];
   document.getElementById('brandHomeBtn').addEventListener('click', () => {
     const now = performance.now();
@@ -8215,7 +8024,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
     document.getElementById('overlayAdmPanel').classList.remove('active');
   });
 
-  // Admin: Currency & Unlocks
   document.getElementById('admCoin1k').addEventListener('click', () => {
     profile.coins = (profile.coins || 0) + 1000; saveProfile(profile); renderProfileUI();
   });
@@ -8247,7 +8055,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
     ensureDailyMissions(); renderProfileUI();
   });
 
-  // Admin: Rating & Full Save Reset
   document.querySelectorAll('[data-adm-rate]').forEach(btn => {
     btn.addEventListener('click', () => {
       const r = parseInt(btn.dataset.admRate, 10);
@@ -8281,7 +8088,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
     renderProfileUI();
   });
 
-  // Admin: Offline Battle & FX Tests
   document.getElementById('admGarbSelf').addEventListener('click', () => {
     if (battle.isOnline || !battle.selfTetris) return;
     const st = battle.getActiveStyle(true);
@@ -8318,54 +8124,11 @@ body.theme-light .lb-summary { color: var(--text-main); }
   document.getElementById('admPuyoStair').addEventListener('click', () => {
     if (battle.isOnline || !battle.selfPuyo) return;
     const g = Array.from({ length: 13 }, () => Array(6).fill(0));
-    // Clean 6-chain staircase: col 5 -> 4 -> 3 -> 2 -> 1 -> 0 (drop Red on col 5 to ignite!)
-    const stairCols = [1, 2, 3, 4, 1, 2]; // colors per column (5..0)
-    for (let i = 0; i < 6; i++) {
-      const col = 5 - i;
-      const c = stairCols[i];
-      if (i === 0) {
-        // Trigger column (col 5): 3 reds stacked; next piece set to [1,1] so dropping fires 6-chain!
-        g[12][col] = c; g[11][col] = c; g[10][col] = c;
-      } else {
-        // Bottom support is previous column's color? Classic 3-1 stair:
-        const prevC = stairCols[i - 1];
-        g[12][col] = c; g[11][col] = c; g[10][col] = prevC; g[9][col] = c;
-      }
-    }
-    // Wait: standard right-to-left 3-1 stairs:
-    // col 5: [1,1,1] at r12,11,10 (needs 1 red on top -> pops!)
-    // col 4: r12=2, r11=2, r10=2, r9=1? No: when col 5 pops, nothing above col 4 falls unless col 5 had something!
-    // Correct 3-1 staircase: col 5 has bottom 3 of color C0, and col 4 has 1 of C0 at bottom? No:
-    // Classic 1-3 staircase (drop trigger on col 0):
-    // col 0: r12=1, r11=1, r10=1 (3 reds -> drop 1 red on col 0 to pop!)
-    // Wait, to fall onto col 0? No, 1-3 stair has the 1-puyo on top of the NEXT column!
-    // Let's build an exact verified 6-chain staircase (drop 1 Red on col 0 to trigger):
-    // col 0: r12=1, r11=1, r10=1, r9=2 (Wait: r9=2 falls? No, r12=1,r11=1,r10=1 -> when 1 drops on col 0? No, if r9=2 is on top, dropping 1 on col 0 won't touch r10=1!)
-    // Exact 6-chain horizontal-fall staircase (verified):
-    // For col c = 0..5, color C[c] = [1,2,3,4,1,2][c]:
-    //   col 0: r12=C[0], r11=C[0], r10=C[0]  (3 of Red; put r9=0 so dropping Red on col 0 pops col 0!)
-    //   Wait: if col 0 pops, col 1 doesn't fall unless col 0 supported something!
-    //   So put C[1] at r9 on col 0? Still blocks col 0 top!
-    //   Instead: put the trigger on col 0 as 2-high + 1-left, OR classic vertical sandwich (鍵積み / Key Chain)!
-    //   Key Chain (鍵積み) 6-chain (100% deterministic, zero ambiguity):
-    //   Wait: in 3-1 Staircase, col 0 has r12=1, r11=1, r10=1, AND col 1 has r12=2, r11=2, r10=1, r9=2!
-    //   When you drop 1 Red on col 0 -> col 0's 3 Reds + col 1's r10=1? Wait: col 0 r10=1 touches col 1 r10=1! That's 4 Reds ALREADY!
-    //   So make col 0: r12=1, r11=1 (2 Reds) + col 1: r12=2, r11=2, r10=1, r9=2 -> drop 1 Red on col 0 (r10=1) -> connects to col 1 r10=1 + col 0 r11,r12 -> 4 Reds pop!
-    //   Then col 1 r9=2 falls to r10=2 -> connects to col 1 r11,r12 (3 Blues) + col 2 r10=2 -> 4 Blues pop!
-    //   Then col 2 r9=3 falls to r10=3 -> connects to col 2 r11,r12 (3 Greens) + col 3 r10=3 -> 4 Greens pop!
-    //   Then col 3 r9=4 falls to r10=4 -> connects to col 3 r11,r12 (3 Yellows) + col 4 r10=4 -> 4 Yellows pop!
-    //   Then col 4 r9=1 falls to r10=1 -> connects to col 4 r11,r12 (3 Reds) + col 5 r10=1 -> 4 Reds pop!
-    //   Then col 5 r9=2 falls to r10=2 -> connects to col 5 r11,r12,r8=2 -> 4 Blues pop!
-    //   EXACT 6-CHAIN! Let's fill that exact verified grid!
-    for (let r = 0; r < 13; r++) g[r].fill(0);
     const C = [1, 2, 3, 4, 1, 2];
-    // col 0: 2 Reds (r12, r11) — drop 1 Red on col 0 (lands at r10, touching col 1 r10=Red!)
     g[12][0] = C[0]; g[11][0] = C[0];
-    // cols 1..4: r12=C[c], r11=C[c], r10=C[c-1], r9=C[c]
     for (let c = 1; c <= 4; c++) {
       g[12][c] = C[c]; g[11][c] = C[c]; g[10][c] = C[c - 1]; g[9][c] = C[c];
     }
-    // col 5 (tail): r12=C[5], r11=C[5], r10=C[4], r9=C[5], r8=C[5]
     g[12][5] = C[5]; g[11][5] = C[5]; g[10][5] = C[4]; g[9][5] = C[5]; g[8][5] = C[5];
 
     battle.selfPuyo.grid = g;
@@ -8514,9 +8277,9 @@ body.theme-light .lb-summary { color: var(--text-main); }
     sound.unlock();
     const sType = getSegVal('soloTypeGroup');
     if (sType === 'puyo_editor') {
-      openPuyoEditor();
-      return;
-    }
+  puyoEditor.openEditor();
+  return;
+  }
     const puyoCols = parseInt(getSegVal('soloPuyoColorGroup'), 10) || 4;
     if (sType === 'cpu') {
       const rule = getSegVal('cpuRuleGroup');
@@ -8711,44 +8474,47 @@ body.theme-light .lb-summary { color: var(--text-main); }
       document.getElementById('repStage').classList.toggle('solo', !!m.isSolo);
       document.getElementById('repOppCanvas').style.display = m.isSolo ? 'none' : 'block';
       const seek = document.getElementById('repSeek');
-      seek.min = 0;
       seek.max = Math.max(0, repData.frames.length - 1);
       seek.value = 0;
       document.getElementById('btnRepTogglePlay').textContent = '⏸ 一時停止';
+      this.applyFrame(0);
       document.getElementById('overlayReplay').classList.add('active');
-      this.renderFrame(0);
     },
 
-    renderFrame(idx) {
-      if (!this.data) return;
-      const f = this.data.frames[Math.min(this.data.frames.length - 1, Math.max(0, idx))];
-      if (!f) return;
+    applyFrame(idx) {
+      if (!this.data || !this.data.frames.length) return;
+      this.frameIdx = Math.max(0, Math.min(this.data.frames.length - 1, idx));
+      const f = this.data.frames[this.frameIdx];
       const m = this.data.meta;
       const isSwap = m.rule === 'swap';
+      const selfStyle = isSwap ? (f.swapSide || 'tetris') : (m.selfStyle || 'tetris');
+      const oppStyle = isSwap ? (f.swapSide || 'tetris') : (m.oppStyle || 'puyo');
+
       if (f.st) this.st.applyRemote(f.st);
       if (f.sp) this.sp.applyRemote(f.sp);
       if (f.ot) this.ot.applyRemote(f.ot);
       if (f.op) this.op.applyRemote(f.op);
-      const sStyle = isSwap ? (f.swapSide || 'tetris') : (m.selfStyle || 'tetris');
-      const oStyle = isSwap ? (f.swapSide || 'tetris') : (m.oppStyle || 'puyo');
-      renderPlayerCanvas(document.getElementById('repSelfCanvas'), sStyle, this.st, this.sp, isSwap, false, null);
+
+      renderPlayerCanvas(document.getElementById('repSelfCanvas'), selfStyle, this.st, this.sp, isSwap, false, null);
       if (!m.isSolo) {
-        renderPlayerCanvas(document.getElementById('repOppCanvas'), oStyle, this.ot, this.op, isSwap, false, null);
+        renderPlayerCanvas(document.getElementById('repOppCanvas'), oppStyle, this.ot, this.op, isSwap, false, null);
       }
-      document.getElementById('repSeek').value = idx;
+
+      document.getElementById('repSeek').value = this.frameIdx;
       const totalT = this.data.frames[this.data.frames.length - 1].t || 0;
-      const fmt = (sec) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${(sec % 60).toFixed(1).padStart(4, '0')}`;
-      document.getElementById('repTimeLabel').textContent = `${fmt(f.t || 0)} / ${fmt(totalT)}`;
+      const curT = f.t || 0;
+      const fmt = (sec) => `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+      document.getElementById('repTimeLabel').textContent = `${fmt(curT)} / ${fmt(totalT)}`;
     },
 
     update(dt) {
       if (!this.open || !this.playing || !this.data) return;
       this.accum += dt * this.speed;
-      while (this.accum >= 0.15) {
-        this.accum -= 0.15;
-        if (this.frameIdx < this.data.frames.length - 1) {
-          this.frameIdx++;
-          this.renderFrame(this.frameIdx);
+      const step = 0.15;
+      while (this.accum >= step) {
+        this.accum -= step;
+        if (this.frameIdx + 1 < this.data.frames.length) {
+          this.applyFrame(this.frameIdx + 1);
         } else {
           this.playing = false;
           document.getElementById('btnRepTogglePlay').textContent = '▶ 再生';
@@ -8765,227 +8531,320 @@ body.theme-light .lb-summary { color: var(--text-main); }
   };
 
   function saveLastReplaySnapshot() {
-    if (battle.replayFrames && battle.replayFrames.length > 0) {
-      lastReplayData = { version: 1, meta: battle.replayMeta, frames: battle.replayFrames };
+    if (!battle.replayFrames || battle.replayFrames.length === 0) {
+      lastReplayData = null;
+      return;
     }
-    const hasRep = !!(lastReplayData && lastReplayData.frames.length > 0);
-    document.getElementById('btnPlayReplay').disabled = !hasRep;
-    document.getElementById('btnSaveReplay').disabled = !hasRep;
+    lastReplayData = {
+      version: 1,
+      meta: { ...(battle.replayMeta || {}) },
+      frames: battle.replayFrames
+    };
   }
 
   document.getElementById('btnPlayReplay').addEventListener('click', () => {
     sound.unlock();
+    if (!lastReplayData) { showToast('リプレイデータがありません'); return; }
     replayPlayer.loadAndOpen(lastReplayData);
   });
+
   document.getElementById('btnSaveReplay').addEventListener('click', () => {
-    if (!lastReplayData) { showToast('保存するリプレイがありません'); return; }
+    if (!lastReplayData) { showToast('保存できるリプレイデータがありません'); return; }
     const blob = new Blob([JSON.stringify(lastReplayData)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     a.href = url;
-    a.download = `puyotet_replay_${Date.now()}.json`;
+    a.download = `puyotet-replay-${ts}.json`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast('リプレイファイルを保存しました');
+    showToast('リプレイ(.json)を保存しました');
   });
+
   document.getElementById('btnLoadReplayFile').addEventListener('click', () => {
-    document.getElementById('replayFileInput').value = '';
     document.getElementById('replayFileInput').click();
   });
+
   document.getElementById('replayFileInput').addEventListener('change', (e) => {
     const file = e.target.files && e.target.files[0];
+    e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(String(reader.result || ''));
-        if (!parsed || !parsed.meta || !Array.isArray(parsed.frames) || parsed.frames.length === 0) {
-          throw new Error('invalid');
-        }
+        const parsed = JSON.parse(reader.result);
+        if (!parsed || !Array.isArray(parsed.frames) || !parsed.meta) throw new Error('invalid');
         document.getElementById('overlayHandling').classList.remove('active');
         replayPlayer.loadAndOpen(parsed);
       } catch (err) {
-        showToast('⚠ 無効なリプレイファイル (.json) です');
+        showToast('無効なリプレイファイルです');
       }
     };
     reader.readAsText(file);
   });
+
   document.getElementById('btnCloseReplay').addEventListener('click', () => replayPlayer.close());
   document.getElementById('btnRepTogglePlay').addEventListener('click', () => {
     if (!replayPlayer.data) return;
-    if (replayPlayer.frameIdx >= replayPlayer.data.frames.length - 1) replayPlayer.frameIdx = 0;
+    if (!replayPlayer.playing && replayPlayer.frameIdx >= replayPlayer.data.frames.length - 1) {
+      replayPlayer.applyFrame(0);
+    }
     replayPlayer.playing = !replayPlayer.playing;
     document.getElementById('btnRepTogglePlay').textContent = replayPlayer.playing ? '⏸ 一時停止' : '▶ 再生';
   });
   document.getElementById('repSeek').addEventListener('input', (e) => {
-    replayPlayer.frameIdx = parseInt(e.target.value, 10) || 0;
-    replayPlayer.renderFrame(replayPlayer.frameIdx);
+    replayPlayer.playing = false;
+    document.getElementById('btnRepTogglePlay').textContent = '▶ 再生';
+    replayPlayer.applyFrame(parseInt(e.target.value, 10) || 0);
   });
   setupSegGroup('repSpeedGroup', (val) => {
     replayPlayer.speed = parseFloat(val) || 1;
   });
 
   /* =========================================================================
-     13. PUYO CHAIN RESEARCH EDITOR (PAINT / FIRE TEST / RESTORE / PRESETS)
+     13. PUYO CHAIN RESEARCH EDITOR (CLICK/DRAG PALETTE, CHAIN SIM & PRESETS)
      ========================================================================= */
   const puyoEditor = {
-    active: false,
-    testing: false,
-    selectedColor: 1,
-    painting: false,
-    preFireGrid: null,
-    shake: { time: 0, mag: 0 },
-    totalChain: 0,
-    totalOjamas: 0,
+    open: false,
+    paintColor: 1,
+    drawing: false,
+    simulating: false,
+    savedGrid: null,
     board: null,
+    canvas: null,
+    ctx: null,
 
-    initBoard() {
-      this.board = new PuyoBoard(
-        true,
-        (st, ojamas) => { this.totalOjamas += ojamas; this.updateResultBadge(); },
-        null, null,
-        (t, v) => { if (t === 'chain') { this.totalChain = Math.max(this.totalChain, v); this.updateResultBadge(); } },
-        (m, d) => { this.shake.mag = Math.max(this.shake.mag, m); this.shake.time = Math.max(this.shake.time, d); },
-        null, 5
-      );
+    init() {
+      this.canvas = document.getElementById('editorCanvas');
+      this.ctx = this.canvas.getContext('2d');
+      this.board = new PuyoBoard(false, null, null, null, null, null, null, 5);
       this.board.current = null;
-      this.board.phase = 'idle';
-      this.board.grid = Array.from({ length: 13 }, () => Array(6).fill(0));
-    },
+      this.board.phase = 'editor';
 
-    updateResultBadge() {
-      const sc = this.board ? this.board.score : 0;
-      document.getElementById('edResultBadge').textContent =
-        `連鎖: ${this.totalChain} | スコア: ${sc.toLocaleString()} | おじゃま: ${this.totalOjamas}`;
-    },
+      document.querySelectorAll('#editorPalette .pal-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          sound.unlock();
+          document.querySelectorAll('#editorPalette .pal-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          this.paintColor = parseInt(btn.dataset.pcol, 10) || 0;
+        });
+      });
 
-    paintAtClient(clientX, clientY) {
-      if (this.testing || !this.board) return;
-      const cv = document.getElementById('editorCanvas');
-      const rect = cv.getBoundingClientRect();
-      const sx = (clientX - rect.left) * (cv.width / rect.width);
-      const sy = (clientY - rect.top) * (cv.height / rect.height);
-      const bx = 70, by = 24, cell = 40;
-      const col = Math.floor((sx - bx) / cell);
-      const visRow = Math.floor((sy - by) / cell);
-      if (col >= 0 && col < 6 && visRow >= 0 && visRow < 12) {
-        const r = visRow + 1;
-        if (this.board.grid[r][col] !== this.selectedColor) {
-          this.board.grid[r][col] = this.selectedColor;
-          if (this.selectedColor > 0) this.board.triggerSquish(col, r);
-          sound.playSE('move');
+      const getCellFromEvent = (e) => {
+        const rect = this.canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        const px = (e.clientX - rect.left) * (this.canvas.width / rect.width);
+        const py = (e.clientY - rect.top) * (this.canvas.height / rect.height);
+        const cell = 42, bx = 64, by = 14;
+        const c = Math.floor((px - bx) / cell);
+        const r = Math.floor((py - by) / cell) + 1;
+        if (c >= 0 && c < 6 && r >= 1 && r < 13) return { c, r };
+        return null;
+      };
+
+      this.canvas.addEventListener('pointerdown', (e) => {
+        if (!this.open || this.simulating) return;
+        e.preventDefault();
+        this.drawing = true;
+        const hit = getCellFromEvent(e);
+        if (hit) {
+          this.board.grid[hit.r][hit.c] = this.paintColor;
+          this.savedGrid = null;
+          this.updateBadge(0, 0, 0);
+          this.render();
         }
-      }
+      });
+
+      this.canvas.addEventListener('pointermove', (e) => {
+        if (!this.open || !this.drawing || this.simulating) return;
+        const hit = getCellFromEvent(e);
+        if (hit && this.board.grid[hit.r][hit.c] !== this.paintColor) {
+          this.board.grid[hit.r][hit.c] = this.paintColor;
+          this.savedGrid = null;
+          this.render();
+        }
+      });
+
+      const stopDraw = () => { this.drawing = false; };
+      this.canvas.addEventListener('pointerup', stopDraw);
+      this.canvas.addEventListener('pointercancel', stopDraw);
+      this.canvas.addEventListener('pointerleave', stopDraw);
+
+      document.getElementById('btnEdFire').addEventListener('click', () => {
+        sound.unlock();
+        if (!this.open) return;
+        if (!this.savedGrid) {
+          this.savedGrid = this.board.grid.map(r => r.slice());
+        } else {
+          this.board.grid = this.savedGrid.map(r => r.slice());
+        }
+        this.board.score = 0;
+        this.board.nuisanceCarry = 0;
+        this.board.chain = 0;
+        this.board.popCells = [];
+        this.board.phase = 'chigiri';
+        this.board.phaseTimer = 0.05;
+        this.simulating = true;
+        this.updateBadge(0, 0, 0);
+        sound.playSE('puyoChigiri');
+        this.render();
+      });
+
+      document.getElementById('btnEdRestore').addEventListener('click', () => {
+        sound.unlock();
+        if (!this.open) return;
+        this.simulating = false;
+        this.board.popCells = [];
+        this.board.phase = 'editor';
+        if (this.savedGrid) {
+          this.board.grid = this.savedGrid.map(r => r.slice());
+          this.render();
+          showToast('編集前の配置を復元しました');
+        } else {
+          this.render();
+        }
+      });
+
+      document.getElementById('btnEdClear').addEventListener('click', () => {
+        sound.unlock();
+        this.simulating = false;
+        this.savedGrid = null;
+        this.board.grid = Array.from({ length: 13 }, () => Array(6).fill(0));
+        this.board.popCells = [];
+        this.board.chain = 0;
+        this.board.score = 0;
+        this.board.phase = 'editor';
+        this.updateBadge(0, 0, 0);
+        this.render();
+      });
+
+      document.getElementById('btnEdPresetStair').addEventListener('click', () => {
+        sound.unlock();
+        this.applyPreset('stair6');
+      });
+      document.getElementById('btnEdPresetGtr').addEventListener('click', () => {
+        sound.unlock();
+        this.applyPreset('gtr5');
+      });
+      document.getElementById('btnEdBackLobby').addEventListener('click', () => {
+        this.close();
+      });
     },
 
-    fireTest() {
-      if (!this.board || this.testing) return;
-      this.preFireGrid = this.board.grid.map(r => r.slice());
-      this.testing = true;
-      this.totalChain = 0;
-      this.totalOjamas = 0;
-      this.board.score = 0;
-      this.board.nuisanceCarry = 0;
+    applyPreset(kind) {
+      this.simulating = false;
+      this.board.popCells = [];
       this.board.chain = 0;
-      this.board.popCells = [];
-      this.board.popups = [];
-      this.board.allClearActive = false;
-      this.board.dead = false;
-      this.board.current = null;
-      this.board.phase = this.board.hasFloatingPuyo() ? 'chigiri' : 'check';
-      this.board.phaseTimer = 0.05;
-      this.updateResultBadge();
-      sound.playSE('rotate');
-    },
-
-    restorePreFire() {
-      if (!this.board) return;
-      this.testing = false;
-      if (this.preFireGrid) {
-        this.board.grid = this.preFireGrid.map(r => r.slice());
-      }
-      this.board.phase = 'idle';
-      this.board.popCells = [];
-      this.board.popups = [];
-      this.board.current = null;
-      this.board.dead = false;
-      sound.playSE('undo');
-    },
-
-    loadPreset(type) {
-      if (!this.board) this.initBoard();
-      this.testing = false;
+      this.board.score = 0;
+      this.board.phase = 'editor';
       const g = Array.from({ length: 13 }, () => Array(6).fill(0));
-      if (type === 'stair') {
+      if (kind === 'stair6') {
         const C = [1, 2, 3, 4, 1, 2];
-        // Ready-to-fire 6-chain staircase (3 Reds on col 0 + col 1 r10=Red!)
         g[12][0] = C[0]; g[11][0] = C[0]; g[10][0] = C[0];
         for (let c = 1; c <= 4; c++) {
           g[12][c] = C[c]; g[11][c] = C[c]; g[10][c] = C[c - 1]; g[9][c] = C[c];
         }
         g[12][5] = C[5]; g[11][5] = C[5]; g[10][5] = C[4]; g[9][5] = C[5]; g[8][5] = C[5];
-      } else if (type === 'gtr') {
-        // Authentic GTR Left-Edge L-Fold 5-Chain Foundation (ready to fire!)
-        // Trigger Red at col 0 r9..r10 + col 1 r10 (4 Reds) -> drops Blue fold (col 0 r8, col 1 r9 -> col 0 r11,r12) -> Green -> Yellow -> Red tail!
-        g[12][0] = 2; g[11][0] = 2; g[10][0] = 1; g[9][0] = 1; g[8][0] = 2; g[7][0] = 3;
-        g[12][1] = 3; g[11][1] = 1; g[10][1] = 1; g[9][1] = 2; g[8][1] = 3;
-        g[12][2] = 3; g[11][2] = 3; g[10][2] = 4; g[9][2] = 4;
-        g[12][3] = 4; g[11][3] = 4; g[10][3] = 1; g[9][3] = 1;
-        g[12][4] = 1; g[11][4] = 1;
+        showToast('階段6連鎖を配置しました（「▶ 発火テスト」で発火！）');
+      } else {
+        g[12][0] = 2; g[12][1] = 2; g[12][2] = 2;
+        g[11][0] = 2; g[11][1] = 1;
+        g[10][0] = 1; g[10][1] = 1; g[10][2] = 1;
+        g[9][1] = 3; g[9][2] = 3; g[9][3] = 3;
+        g[8][2] = 4; g[8][3] = 4; g[8][4] = 4;
+        g[7][3] = 2; g[7][4] = 2; g[7][5] = 2;
+        showToast('GTR折り返し基礎（5連鎖）を配置しました');
       }
       this.board.grid = g;
-      this.preFireGrid = g.map(r => r.slice());
-      this.board.phase = 'idle';
-      this.board.popCells = [];
-      this.board.popups = [];
-      this.totalChain = 0; this.totalOjamas = 0; this.board.score = 0;
-      this.updateResultBadge();
-      sound.playSE('hold');
+      this.savedGrid = g.map(r => r.slice());
+      this.updateBadge(0, 0, 0);
+      this.render();
+    },
+
+    updateBadge(chain, score, ojama) {
+      document.getElementById('edResultBadge').textContent =
+        `連鎖: ${chain} | スコア: ${score.toLocaleString()} | おじゃま: ${ojama}`;
+    },
+
+    openEditor() {
+      sound.stopBGM();
+      net.cleanup();
+      this.open = true;
+      this.simulating = false;
+      this.board.phase = 'editor';
+      this.board.current = null;
+      this.updateBadge(0, 0, 0);
+      showScreen('screenEditor');
+      this.render();
+    },
+
+    close() {
+      this.open = false;
+      this.simulating = false;
+      this.drawing = false;
+      showScreen('screenLobby');
+      renderProfileUI();
     },
 
     update(dt) {
-      if (!this.active || !this.board) return;
-      if (this.shake.time > 0) {
-        this.shake.time = Math.max(0, this.shake.time - dt);
-        if (this.shake.time === 0) this.shake.mag = 0;
+      if (!this.open || !this.simulating) return;
+      const b = this.board;
+      for (let r = 0; r < b.rows; r++) {
+        for (let c = 0; c < b.cols; c++) {
+          if (b.squish[r][c] > 0) b.squish[r][c] = Math.max(0, b.squish[r][c] - dt * 4.2);
+        }
       }
-      if (this.testing) {
-        // Override spawnNext during editor test so chain ends cleanly without spawning a falling pair
-        const origSpawn = this.board.spawnNext;
-        this.board.spawnNext = () => {
-          this.testing = false;
-          this.board.phase = 'idle';
-          this.board.current = null;
-          this.updateResultBadge();
-        };
-        this.board.update(dt, false);
-        this.board.spawnNext = origSpawn;
-      } else {
-        for (let r = 0; r < 13; r++) {
-          for (let c = 0; c < 6; c++) {
-            if (this.board.squish[r][c] > 0) this.board.squish[r][c] = Math.max(0, this.board.squish[r][c] - dt * 4.2);
+      for (let i = b.popups.length - 1; i >= 0; i--) {
+        b.popups[i].life -= dt;
+        b.popups[i].yOffset -= dt * 26;
+        if (b.popups[i].life <= 0) b.popups.splice(i, 1);
+      }
+
+      if (b.phase === 'chigiri' || b.phase === 'falling') {
+        b.phaseTimer -= dt;
+        if (b.phaseTimer <= 0) {
+          if (b.applyGravityStep()) b.phaseTimer = 0.04;
+          else { b.phase = 'check'; b.phaseTimer = 0.08; }
+        }
+      } else if (b.phase === 'check') {
+        b.phaseTimer -= dt;
+        if (b.phaseTimer <= 0) {
+          const prevChain = b.chain;
+          const prevScore = b.score;
+          b.executeCheck();
+          if (b.chain > prevChain) {
+            const estOjama = Math.floor((b.score - prevScore) / 70);
+            this.updateBadge(b.chain, b.score, estOjama);
+          } else if (b.phase !== 'popping' && b.phase !== 'falling' && b.phase !== 'check') {
+            this.simulating = false;
+            b.phase = 'editor';
+            const totalOjama = Math.floor(b.score / 70);
+            this.updateBadge(b.chain, b.score, totalOjama);
           }
         }
-        for (let i = this.board.popups.length - 1; i >= 0; i--) {
-          this.board.popups[i].life -= dt;
-          this.board.popups[i].yOffset -= dt * 26;
-          if (this.board.popups[i].life <= 0) this.board.popups.splice(i, 1);
+      } else if (b.phase === 'popping') {
+        b.phaseTimer -= dt;
+        if (b.phaseTimer <= 0) {
+          for (const [x, y] of b.popCells) b.grid[y][x] = 0;
+          b.popCells = [];
+          b.phase = 'falling';
+          b.phaseTimer = 0.05;
         }
       }
       this.render();
     },
 
     render() {
-      const cv = document.getElementById('editorCanvas');
-      const ctx = cv.getContext('2d');
-      ctx.save();
-      ctx.clearRect(0, 0, cv.width, cv.height);
+      if (!this.ctx || !this.board) return;
+      const ctx = this.ctx;
+      const b = this.board;
+      const W = this.canvas.width, H = this.canvas.height;
+      const cell = 42, bx = 64, by = 14, bw = 6 * cell, bh = 12 * cell;
+
+      ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = activeThemeObj.canvasBg;
-      ctx.fillRect(0, 0, cv.width, cv.height);
-      if (this.shake.time > 0) {
-        ctx.translate((Math.random() - 0.5) * 2 * this.shake.mag, (Math.random() - 0.5) * 2 * this.shake.mag);
-      }
-      const bx = 70, by = 24, cell = 40, bw = 240, bh = 480;
+      ctx.fillRect(0, 0, W, H);
+
       ctx.fillStyle = activeThemeObj.fieldBg;
       ctx.fillRect(bx, by, bw, bh);
       ctx.strokeStyle = activeThemeObj.gridLine;
@@ -8996,18 +8855,12 @@ body.theme-light .lb-summary { color: var(--text-main); }
       for (let y = 0; y <= 12; y++) {
         ctx.beginPath(); ctx.moveTo(bx, by + y * cell); ctx.lineTo(bx + bw, by + y * cell); ctx.stroke();
       }
-      // Death X mark
-      ctx.strokeStyle = 'rgba(239,68,68,0.65)'; ctx.lineWidth = 2.5;
-      const xx = bx + 2 * cell + 8, xy = by + 8, xs = cell - 16;
-      ctx.beginPath(); ctx.moveTo(xx, xy); ctx.lineTo(xx + xs, xy + xs);
-      ctx.moveTo(xx + xs, xy); ctx.lineTo(xx, xy + xs); ctx.stroke();
 
-      const b = this.board;
       const popSet = new Set(b.popCells.map(([x, y]) => `${x},${y}`));
       for (let r = 1; r < 13; r++) {
         for (let c = 0; c < 6; c++) {
           const col = b.grid[r][c];
-          if (col === 0) continue;
+          if (!col) continue;
           let mask = 0;
           if (col >= 1 && col <= 5) {
             if (r > 1 && b.grid[r - 1][c] === col) mask |= 1;
@@ -9018,538 +8871,60 @@ body.theme-light .lb-summary { color: var(--text-main); }
           drawPuyoCell(ctx, bx + c * cell, by + (r - 1) * cell, cell, col, mask, popSet.has(`${c},${r}`), b.squish[r][c]);
         }
       }
-      ctx.strokeStyle = activeThemeObj.puyoBorder; ctx.lineWidth = 2;
+
+      ctx.strokeStyle = activeThemeObj.puyoBorder;
+      ctx.lineWidth = 2;
       ctx.strokeRect(bx, by, bw, bh);
 
       for (const pop of b.popups) {
         ctx.save();
         ctx.globalAlpha = Math.min(1, pop.life / pop.maxLife * 1.4);
-        ctx.font = '900 22px sans-serif'; ctx.textAlign = 'center';
-        ctx.shadowBlur = 14; ctx.shadowColor = pop.color; ctx.fillStyle = pop.color;
+        ctx.font = '900 24px sans-serif'; ctx.textAlign = 'center';
+        ctx.shadowBlur = 14; ctx.shadowColor = pop.color;
+        ctx.fillStyle = pop.color;
         ctx.fillText(pop.text, bx + bw / 2, by + bh * 0.42 + pop.yOffset);
         ctx.restore();
       }
-      ctx.restore();
     }
   };
 
   function openPuyoEditor() {
-    if (!puyoEditor.board) puyoEditor.initBoard();
-    puyoEditor.active = true;
-    puyoEditor.testing = false;
-    showScreen('screenEditor');
-    puyoEditor.updateResultBadge();
-    puyoEditor.render();
+    puyoEditor.openEditor();
   }
-
-  document.querySelectorAll('#editorPalette .pal-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      sound.unlock();
-      document.querySelectorAll('#editorPalette .pal-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      puyoEditor.selectedColor = parseInt(btn.dataset.pcol, 10);
-    });
-  });
-
-  const edCanvas = document.getElementById('editorCanvas');
-  edCanvas.addEventListener('pointerdown', (e) => {
-    e.preventDefault(); sound.unlock();
-    puyoEditor.painting = true;
-    puyoEditor.paintAtClient(e.clientX, e.clientY);
-  });
-  edCanvas.addEventListener('pointermove', (e) => {
-    if (!puyoEditor.painting) return;
-    e.preventDefault();
-    puyoEditor.paintAtClient(e.clientX, e.clientY);
-  });
-  window.addEventListener('pointerup', () => { puyoEditor.painting = false; });
-
-  document.getElementById('btnEdFire').addEventListener('click', () => { sound.unlock(); puyoEditor.fireTest(); });
-  document.getElementById('btnEdRestore').addEventListener('click', () => { sound.unlock(); puyoEditor.restorePreFire(); });
-  document.getElementById('btnEdClear').addEventListener('click', () => {
-    sound.unlock();
-    puyoEditor.testing = false;
-    puyoEditor.board.grid = Array.from({ length: 13 }, () => Array(6).fill(0));
-    puyoEditor.preFireGrid = null;
-    puyoEditor.totalChain = 0; puyoEditor.totalOjamas = 0; puyoEditor.board.score = 0;
-    puyoEditor.updateResultBadge();
-    sound.playSE('lock');
-  });
-  document.getElementById('btnEdPresetStair').addEventListener('click', () => { sound.unlock(); puyoEditor.loadPreset('stair'); });
-  document.getElementById('btnEdPresetGtr').addEventListener('click', () => { sound.unlock(); puyoEditor.loadPreset('gtr'); });
-  document.getElementById('btnEdBackLobby').addEventListener('click', () => {
-    puyoEditor.active = false;
-    puyoEditor.testing = false;
-    showScreen('screenLobby');
-  });
-
-  let lastTime = performance.now();
 
   /* =========================================================================
-     12. TETRIS 99 BATTLE ROYALE ENGINE (SOLO + STAR-TOPOLOGY ONLINE P2P)
+     14. TETRIS 99 BATTLE ROYALE (SOLO + ONLINE 99 LOBBY + TACTICS + BADGES)
      ========================================================================= */
   const BR99_CPU_NAMES = [
-    'NOVA','KAI','RIN','SORA','LEO','YUKI','ZED','MIRA','REN','AXEL',
-    'HANA','KIRA','VOLT','LUNA','KEN','ARIA','REX','NINA','JIN','ECHO',
-    'YUNA','VEX','HARU','ZOE','TAKU','IRIS','NOAH','MAYA','SHUN','LYRA',
-    'RYO','CLIO','KOU','SARA','FANG','EMI','BLAZE','AMI','DAIKI','VERA',
-    'TORA','NANA','PULSE','RISA','GALE','MIKU','ZERO','KANA','ORION','YUI',
-    'APEX','SAYA','DRIFT','AOI','FROST','CHLOE','SPARK','MEI','KAZE','EVA',
-    'PYRO','HINA','SONIC','LILY','ACE','MOMO','NEXUS','RIKA','STORM','YUA',
-    'CRUX','AYAKA','JET','RINA','OMEGA','SENA','PIXEL','KOTO','CYBER','MIZU',
-    'TITAN','AKARI','FLARE','YUZU','HYPER','NOZOMI','BLITZ','RUNA','VORTEX','SHIO',
-    'PRIME','KOHARU','ZENITH','SUMIRE','VECTOR','TSUMUGI','QUARTZ','KAEDE','AETHER','MANAMI'
+    'Akira','Haruto','Sora','Ren','Yuto','Kaito','Hana','Mei','Rin','Aoi',
+    'Takumi','Daiki','Shota','Riku','Kenta','Yuki','Naoki','Tsubasa','Mio','Sakura',
+    'Hinata','Yui','Koharu','Nanami','Ayaka','Honoka','Natsuki','Kana','Mizuki','Fuka',
+    'Leon','Nova','Vex','Zed','Kira','Mina','Taro','Jiro','Saburo','Kenji',
+    'Shinji','Goro','Ryo','Kazuki','Hayato','Soma','Asahi','Ibuki','Minato','Itsuki',
+    'Noa','Sena','Rei','Kaede','Mao','Yuzuki','Mahiro','Hikari','Chihiro','Kokoro',
+    'Aria','Luna','Eden','Orion','Atlas','Phoenix','Falcon','Valkyrie','Titan','Apex',
+    'Blitz','Pulse','Flux','Spark','Echo','Drift','Shadow','Frost','Blaze','Storm',
+    'Kuro','Shiro','Momo','Ume','Tsubaki',' Botan','Kaede2','Sora2','Ren2','Kaito2',
+    'Yuma','Sosuke','Haruki','Ryusei','Rento','Aoto','Minori','Kotone','Yuna','Hiyori'
   ];
 
-  function calcBr99BadgeLevel(bits) {
-    if (bits >= 30) return { lv: 4, pct: 100, mult: 2.0 };
-    if (bits >= 14) return { lv: 3, pct: 75,  mult: 1.75 };
-    if (bits >= 6)  return { lv: 2, pct: 50,  mult: 1.5 };
-    if (bits >= 2)  return { lv: 1, pct: 25,  mult: 1.25 };
-    return { lv: 0, pct: 0, mult: 1.0 };
-  }
-
-  function calcBr99AttackerBonus(n) {
-    if (n >= 6) return 6;
-    if (n === 5) return 5;
-    if (n === 4) return 4;
-    if (n === 3) return 3;
-    if (n === 2) return 1;
+  const BR99_BADGE_BONUSES = [0, 0.10, 0.25, 0.50, 1.00];
+  function getBr99BadgeLevel(badges) {
+    if (badges >= 9) return 4;
+    if (badges >= 6) return 3;
+    if (badges >= 3) return 2;
+    if (badges >= 2) return 1;
     return 0;
   }
 
   function updateBr99RecordBanner() {
     const el = document.getElementById('br99RecordBanner');
     if (!el) return;
-    const best = profile.records && typeof profile.records.bestBr99Rank === 'number' ? `#${profile.records.bestBr99Rank} / 99` : '未記録';
-    const wins = (profile.records && profile.records.br99Wins) || 0;
-    el.textContent = `👑 最高順位: ${best} / テト1（1位）回数: ${wins}回`;
+    const bestR = (profile.records && typeof profile.records.bestBr99Rank === 'number') ? profile.records.bestBr99Rank : null;
+    const wins = (profile.records && typeof profile.records.br99Wins === 'number') ? profile.records.br99Wins : 0;
+    const rTxt = bestR ? `#${bestR} / 99` : '未記録';
+    el.textContent = `👑 最高順位: ${rTxt} / テト1（1位）回数: ${wins}回`;
   }
-
-  const br99Net = {
-    peer: null,
-    isHost: false,
-    isPublic: false,
-    roomCode: '',
-    started: false,
-    conns: new Map(), // host: peerId -> { conn, slot, name, rating, deviceId, ready }
-    hostConn: null,   // client -> host
-    lobbyPlayers: [], // [{ peerId, name, rating, ready, isHost }]
-    myReady: false,
-    waitTimer: 60,
-    waitInterval: null,
-    scanAbort: false,
-
-    cleanup() {
-      this.scanAbort = true;
-      if (this.waitInterval) { clearInterval(this.waitInterval); this.waitInterval = null; }
-      this.conns.forEach(entry => { try { entry.conn.close(); } catch (e) {} });
-      this.conns.clear();
-      if (this.hostConn) { try { this.hostConn.close(); } catch (e) {} this.hostConn = null; }
-      if (this.peer) { try { this.peer.destroy(); } catch (e) {} this.peer = null; }
-      this.isHost = false;
-      this.isPublic = false;
-      this.roomCode = '';
-      this.started = false;
-      this.lobbyPlayers = [];
-      this.myReady = false;
-      this.waitTimer = 60;
-      const wb = document.getElementById('br99WaitBox');
-      if (wb) wb.classList.remove('active');
-      const lg = document.getElementById('br99LaunchGrid');
-      if (lg) lg.style.display = 'grid';
-    },
-
-    showLobbyUI(title, showCodeBar) {
-      document.getElementById('br99LaunchGrid').style.display = 'none';
-      document.getElementById('br99WaitBox').classList.add('active');
-      document.getElementById('br99LobbyTitle').textContent = title;
-      document.getElementById('br99RoomCodeBar').style.display = showCodeBar ? 'flex' : 'none';
-      if (showCodeBar) document.getElementById('br99RoomCodeDisplay').textContent = this.roomCode;
-      this.renderLobbyPlayers();
-    },
-
-    renderLobbyPlayers() {
-      const listEl = document.getElementById('br99PlayerList');
-      if (!listEl) return;
-      const count = this.lobbyPlayers.length;
-      const cpuFill = Math.max(0, 99 - count);
-      document.getElementById('br99CountSummary').textContent = `参加人数: ${count} / 99（残り${cpuFill}枠はCPU補充）`;
-      document.getElementById('br99TimerBadge').textContent = `⏳ 自動開始まで: ${Math.max(0, Math.ceil(this.waitTimer))}秒`;
-      const btn = document.getElementById('btnBr99Ready');
-      btn.textContent = this.myReady ? '✅ 準備完了（キャンセル）' : '▶ スタート（準備完了）';
-      btn.classList.toggle('btn-danger', this.myReady);
-      btn.classList.toggle('btn-primary', !this.myReady);
-
-      listEl.innerHTML = this.lobbyPlayers.map(p => `
-        <div class="br99-player-row">
-          <span>${p.isHost ? '👑 ' : '👤 '}${escapeHtml(p.name)} <span style="color:var(--text-dim);font-size:0.72rem;">R${p.rating}</span></span>
-          <span style="color:${p.ready ? 'var(--green)' : 'var(--text-dim)'};">${p.ready ? '✅ READY' : '⏳ 待機中'}</span>
-        </div>
-      `).join('');
-    },
-
-    broadcastLobbyState() {
-      if (!this.isHost) return;
-      const list = [{ peerId: this.peer.id, name: profile.name, rating: profile.rating, ready: this.myReady, isHost: true }];
-      this.conns.forEach((entry, pid) => {
-        list.push({ peerId: pid, name: entry.name, rating: entry.rating, ready: entry.ready, isHost: false });
-      });
-      this.lobbyPlayers = list;
-      this.renderLobbyPlayers();
-      const payload = { type: 'br99LobbyState', players: list, waitTimer: this.waitTimer };
-      this.conns.forEach(entry => {
-        if (entry.conn && entry.conn.open) entry.conn.send(payload);
-      });
-      // Start immediately when ALL connected players press Ready
-      if (list.length >= 1 && list.every(p => p.ready) && !this.started) {
-        this.hostLaunchMatch();
-      }
-    },
-
-    startWaitCountdown() {
-      if (this.waitInterval) clearInterval(this.waitInterval);
-      this.waitTimer = 60;
-      this.waitInterval = setInterval(() => {
-        if (this.started) { clearInterval(this.waitInterval); this.waitInterval = null; return; }
-        this.waitTimer--;
-        if (this.isHost) {
-          this.broadcastLobbyState();
-          if (this.waitTimer <= 0) {
-            this.hostLaunchMatch();
-          }
-        } else {
-          this.renderLobbyPlayers();
-        }
-      }, 1000);
-    },
-
-    setupHostPeer(peerId, title, showCodeBar) {
-      this.cleanup();
-      if (typeof Peer === 'undefined') {
-        showToast('PeerJSが読み込めない環境のためオンライン99は利用できません');
-        return;
-      }
-      this.scanAbort = false;
-      this.isHost = true;
-      this.started = false;
-      this.myReady = false;
-      const p = new Peer(peerId);
-      this.peer = p;
-
-      p.on('open', () => {
-        this.showLobbyUI(title, showCodeBar);
-        this.startWaitCountdown();
-        this.broadcastLobbyState();
-      });
-
-      p.on('connection', (conn) => {
-        if (this.started || this.conns.size >= 98) {
-          conn.on('open', () => {
-            try { conn.send({ type: 'br99Reject', reason: this.started ? '試合開始済みのため参加できません' : '満員です' }); } catch (e) {}
-            setTimeout(() => { try { conn.close(); } catch (e) {} }, 150);
-          });
-          return;
-        }
-        const entry = { conn, slot: -1, name: 'PLAYER', rating: 1500, deviceId: '', ready: false };
-        this.conns.set(conn.peer, entry);
-        conn.on('data', (msg) => this.onHostReceive(conn.peer, msg));
-        conn.on('close', () => {
-          const e = this.conns.get(conn.peer);
-          this.conns.delete(conn.peer);
-          if (!this.started) {
-            this.broadcastLobbyState();
-          } else if (e && e.slot >= 0 && br99.isOpen) {
-            // Convert disconnected client slot to CPU takeover
-            br99.convertSlotToCpu(e.slot);
-          }
-        });
-      });
-
-      p.on('error', (err) => {
-        showToast('オンライン99接続エラー: ' + (err.type || '接続失敗'));
-        this.cleanup();
-      });
-    },
-
-    startAutoMatch() {
-      this.cleanup();
-      if (typeof Peer === 'undefined') {
-        showToast('PeerJSが読み込めない環境のためオンライン99は利用できません');
-        return;
-      }
-      this.scanAbort = false;
-      this.isPublic = true;
-      showToast('🌐 公開99ロビーを検索中...');
-      const slots = [0, 1, 2, 3, 4].map(i => `puyotet-br99-pub-${i}`);
-      const tempPeer = new Peer();
-      this.peer = tempPeer;
-
-      tempPeer.on('open', () => {
-        let idx = 0;
-        const tryNext = () => {
-          if (this.scanAbort) return;
-          if (idx >= slots.length) {
-            // No open lobby found -> host slot 0 (or first available)
-            try { tempPeer.destroy(); } catch (e) {}
-            this.peer = null;
-            this.tryHostPublicSlot(0);
-            return;
-          }
-          const targetId = slots[idx++];
-          let settled = false;
-          const c = tempPeer.connect(targetId, { reliable: true });
-          const timer = setTimeout(() => {
-            if (!settled) { settled = true; try { c.close(); } catch (e) {} tryNext(); }
-          }, 1100);
-          c.on('open', () => {
-            if (settled) return;
-            c.send({ type: 'br99Hello', name: profile.name, rating: profile.rating, deviceId: DEVICE_ID, lbRecord: buildPublicRecord() });
-            const onProbeData = (msg) => {
-              if (settled) return;
-              if (msg && msg.type === 'br99Reject') {
-                settled = true; clearTimeout(timer);
-                try { c.close(); } catch (e) {}
-                tryNext();
-              } else if (msg && msg.type === 'br99LobbyState') {
-                settled = true; clearTimeout(timer);
-                c.off('data', onProbeData);
-                this.attachClientConn(c, '🌐 オンライン99（自動マッチ）', false, true);
-                this.onClientReceive(msg);
-              }
-            };
-            c.on('data', onProbeData);
-          });
-          c.on('error', () => {
-            if (!settled) { settled = true; clearTimeout(timer); tryNext(); }
-          });
-        };
-        tryNext();
-      });
-      tempPeer.on('error', () => {
-        if (!this.scanAbort) this.tryHostPublicSlot(0);
-      });
-    },
-
-    tryHostPublicSlot(slotIdx) {
-      if (this.scanAbort) return;
-      if (slotIdx > 4) {
-        showToast('公開99ロビーが満員です。フレンド99をお試しください。');
-        this.cleanup();
-        return;
-      }
-      const pid = `puyotet-br99-pub-${slotIdx}`;
-      const p = new Peer(pid);
-      this.peer = p;
-      this.isHost = true;
-      this.isPublic = true;
-      this.started = false;
-      this.myReady = false;
-      p.on('open', () => {
-        this.showLobbyUI(`🌐 オンライン99 公開ロビー #${slotIdx + 1}`, false);
-        this.startWaitCountdown();
-        this.broadcastLobbyState();
-      });
-      p.on('connection', (conn) => {
-        if (this.started || this.conns.size >= 98) {
-          conn.on('open', () => {
-            try { conn.send({ type: 'br99Reject', reason: '試合開始済みです' }); } catch (e) {}
-            setTimeout(() => { try { conn.close(); } catch (e) {} }, 150);
-          });
-          return;
-        }
-        const entry = { conn, slot: -1, name: 'PLAYER', rating: 1500, deviceId: '', ready: false };
-        this.conns.set(conn.peer, entry);
-        conn.on('data', (msg) => this.onHostReceive(conn.peer, msg));
-        conn.on('close', () => {
-          const e = this.conns.get(conn.peer);
-          this.conns.delete(conn.peer);
-          if (!this.started) this.broadcastLobbyState();
-          else if (e && e.slot >= 0 && br99.isOpen) br99.convertSlotToCpu(e.slot);
-        });
-      });
-      p.on('error', (err) => {
-        if (err.type === 'unavailable-id') {
-          try { p.destroy(); } catch (e) {}
-          this.tryHostPublicSlot(slotIdx + 1);
-        } else {
-          showToast('オンライン99ホスト作成に失敗しました');
-          this.cleanup();
-        }
-      });
-    },
-
-    createFriendRoom() {
-      const code = 'BR-' + Math.floor(1000 + Math.random() * 9000);
-      this.roomCode = code;
-      this.setupHostPeer('puyotet-br99-room-' + code, '🔑 フレンド99 待機ロビー', true);
-    },
-
-    joinFriendRoom(rawCode) {
-      const code = String(rawCode || '').trim().toUpperCase();
-      if (!code) { showToast('フレンド99のルームIDを入力してください'); return; }
-      this.cleanup();
-      if (typeof Peer === 'undefined') {
-        showToast('PeerJSが読み込めない環境のためオンライン99は利用できません');
-        return;
-      }
-      this.roomCode = code;
-      this.isHost = false;
-      this.started = false;
-      this.myReady = false;
-      const p = new Peer();
-      this.peer = p;
-      showToast(`ルーム ${code} に接続中...`);
-      p.on('open', () => {
-        const c = p.connect('puyotet-br99-room-' + code, { reliable: true });
-        c.on('open', () => {
-          this.attachClientConn(c, `🔑 フレンド99 (${code})`, true);
-        });
-        c.on('error', () => {
-          showToast('ルームへの接続に失敗しました');
-          this.cleanup();
-        });
-      });
-      p.on('error', () => {
-        showToast('ルームが見つかりませんでした');
-        this.cleanup();
-      });
-    },
-
-    attachClientConn(conn, title, showCodeBar, skipHello = false) {
-      this.isHost = false;
-      this.hostConn = conn;
-      this.myReady = false;
-      this.showLobbyUI(title, showCodeBar);
-      if (!skipHello) {
-        conn.send({ type: 'br99Hello', name: profile.name, rating: profile.rating, deviceId: DEVICE_ID, lbRecord: buildPublicRecord() });
-      }
-      conn.on('data', (msg) => this.onClientReceive(msg));
-      conn.on('close', () => {
-        if (this.started && br99.isOpen && !br99.ended) {
-          br99.activateLocalFallback();
-        } else if (!this.started) {
-          showToast('ホストとの接続が切れました');
-          this.cleanup();
-        }
-      });
-    },
-
-    toggleReady() {
-      this.myReady = !this.myReady;
-      if (this.isHost) {
-        this.broadcastLobbyState();
-      } else if (this.hostConn && this.hostConn.open) {
-        this.hostConn.send({ type: 'br99Ready', ready: this.myReady });
-        this.renderLobbyPlayers();
-      }
-    },
-
-    hostLaunchMatch() {
-      if (!this.isHost || this.started) return;
-      this.started = true;
-      if (this.waitInterval) { clearInterval(this.waitInterval); this.waitInterval = null; }
-
-      // Assign 99 slots: slot 0 = host, slots 1..N = clients, rest = CPUs
-      const roster = [];
-      roster.push({ slot: 0, isHuman: true, peerId: this.peer.id, name: profile.name || 'PLAYER', rating: profile.rating || 1500 });
-      let sIdx = 1;
-      this.conns.forEach((entry, pid) => {
-        entry.slot = sIdx;
-        roster.push({ slot: sIdx, isHuman: true, peerId: pid, name: entry.name, rating: entry.rating });
-        sIdx++;
-      });
-      let cpuNum = 0;
-      while (roster.length < 99) {
-        const baseName = BR99_CPU_NAMES[cpuNum % BR99_CPU_NAMES.length];
-        roster.push({ slot: roster.length, isHuman: false, peerId: '', name: `${baseName}-${cpuNum + 1}`, rating: 1200 + ((cpuNum * 37) % 1000) });
-        cpuNum++;
-      }
-
-      // Send start signal to each client with their assigned slot
-      this.conns.forEach((entry) => {
-        if (entry.conn && entry.conn.open) {
-          entry.conn.send({ type: 'br99Start', mySlot: entry.slot, roster });
-        }
-      });
-
-      document.getElementById('br99WaitBox').classList.remove('active');
-      document.getElementById('br99LaunchGrid').style.display = 'grid';
-      br99.startOnline(true, 0, roster);
-    },
-
-    onHostReceive(peerId, msg) {
-      if (!msg || !msg.type) return;
-      const entry = this.conns.get(peerId);
-      if (!entry) return;
-      if (msg.type === 'br99Hello') {
-        entry.name = String(msg.name || 'PLAYER').slice(0, 16);
-        entry.rating = Number(msg.rating) || 1500;
-        entry.deviceId = msg.deviceId || '';
-        if (msg.lbRecord) upsertLeaderboardPlayer(msg.lbRecord);
-        this.broadcastLobbyState();
-      } else if (msg.type === 'br99Ready') {
-        entry.ready = !!msg.ready;
-        this.broadcastLobbyState();
-      } else if (msg.type === 'br99State' && br99.isOpen) {
-        br99.hostApplyClientState(entry.slot, msg);
-      } else if (msg.type === 'br99Attack' && br99.isOpen) {
-        br99.hostHandleAttack(entry.slot, msg.lines || 0, msg.tactic || 'random', msg.target);
-      } else if (msg.type === 'br99Dead' && br99.isOpen) {
-        br99.hostHandleSlotKO(entry.slot, msg.killerSlot);
-      } else if (msg.type === 'lbSync' && msg.lbRecord) {
-        upsertLeaderboardPlayer(msg.lbRecord);
-      }
-    },
-
-    onClientReceive(msg) {
-      if (!msg || !msg.type) return;
-      if (msg.type === 'br99Reject') {
-        showToast(msg.reason || '参加できませんでした');
-        this.cleanup();
-      } else if (msg.type === 'br99LobbyState') {
-        this.lobbyPlayers = msg.players || [];
-        if (typeof msg.waitTimer === 'number') this.waitTimer = msg.waitTimer;
-        this.renderLobbyPlayers();
-      } else if (msg.type === 'br99Start') {
-        this.started = true;
-        if (this.waitInterval) { clearInterval(this.waitInterval); this.waitInterval = null; }
-        document.getElementById('br99WaitBox').classList.remove('active');
-        document.getElementById('br99LaunchGrid').style.display = 'grid';
-        br99.startOnline(false, msg.mySlot, msg.roster);
-      } else if (msg.type === 'br99WorldSync' && br99.isOpen) {
-        br99.clientApplyWorldSync(msg);
-      } else if (msg.type === 'br99Garbage' && br99.isOpen) {
-        br99.receiveIncomingGarbage(msg.lines || 0, msg.fromSlot);
-      } else if (msg.type === 'br99KO' && br99.isOpen) {
-        br99.onGotKO(msg.victimName || 'RIVAL', msg.gainedBits || 1);
-      } else if (msg.type === 'lbSync' && msg.lbRecord) {
-        upsertLeaderboardPlayer(msg.lbRecord);
-      }
-    },
-
-    sendToHost(obj) {
-      if (this.hostConn && this.hostConn.open) {
-        try { this.hostConn.send(obj); } catch (e) {}
-      }
-    },
-
-    sendToSlot(slot, obj) {
-      this.conns.forEach(entry => {
-        if (entry.slot === slot && entry.conn && entry.conn.open) {
-          try { entry.conn.send(obj); } catch (e) {}
-        }
-      });
-    },
-
-    broadcastToClients(obj) {
-      this.conns.forEach(entry => {
-        if (entry.conn && entry.conn.open) {
-          try { entry.conn.send(obj); } catch (e) {}
-        }
-      });
-    }
-  };
 
   const br99 = {
     isOpen: false,
@@ -9557,203 +8932,524 @@ body.theme-light .lb-summary { color: var(--text-main); }
     paused: false,
     ended: false,
     isOnline: false,
-    isHost: true,
-    isLocalSimFallback: false,
-    mySlot: 0,
+    isHost: false,
+    roomCode: '',
+    lobbyMode: 'none', // 'none' | 'auto' | 'room'
+    waitSeconds: 60,
+    waitTimerId: null,
+    lobbyPlayers: [], // { peerId, name, rating, title, isHuman, ready, isSelf }
+    onlinePeers: new Map(), // peerId -> conn
+    peer: null,
+    players: [],
+    self: null,
     selfBoard: null,
-    selfShake: { mag: 0, time: 0 },
-    players: [], // 99 slots: { slot, isHuman, name, rating, alive, heights[10], danger, badgeBits, target, tactic, koCount, skill, simTimer, lastAttacker }
-    otherSlots: [], // 98 slots excluding mySlot (0..48 left, 49..97 right)
     tactic: 'random',
-    currentTarget: -1,
+    counterAttackers: [],
     koCount: 0,
-    badgeBits: 0,
-    lastAttackerSlot: -1,
-    phase: 0, // 0=normal, 1=top50, 2=top10
-    elapsedSec: 0,
-    syncAccum: 0,
-    calloutTimer: 0,
-    countdownVal: 0,
-    countdownTimer: 0,
+    badges: 0,
+    speedTier: 1,
+    shownTop50: false,
+    shownTop10: false,
+    elapsed: 0,
+    onlineSyncAccum: 0,
+    selfShake: { time: 0, mag: 0 },
+    calloutTimer: null,
+    leftCanvas: null,
+    rightCanvas: null,
+    selfCanvas: null,
+
+    initUI() {
+      this.leftCanvas = document.getElementById('br99LeftCanvas');
+      this.rightCanvas = document.getElementById('br99RightCanvas');
+      this.selfCanvas = document.getElementById('br99SelfCanvas');
+
+      document.getElementById('btnBr99SoloStart').addEventListener('click', () => {
+        sound.unlock();
+        this.leaveOnlineLobby(false);
+        this.startSolo();
+      });
+      document.getElementById('btnBr99AutoMatch').addEventListener('click', () => {
+        sound.unlock();
+        this.openOnlineLobby('auto', '');
+      });
+      document.getElementById('btnBr99CreateRoom').addEventListener('click', () => {
+        sound.unlock();
+        const code = 'BR-' + Math.floor(1000 + Math.random() * 9000);
+        this.openOnlineLobby('room', code);
+      });
+      document.getElementById('btnBr99JoinRoom').addEventListener('click', () => {
+        sound.unlock();
+        const code = (document.getElementById('inputBr99RoomId').value || '').trim().toUpperCase();
+        if (!code) { showToast('ルームIDを入力してください'); return; }
+        this.openOnlineLobby('room', code);
+      });
+      document.getElementById('btnBr99Leave').addEventListener('click', () => {
+        this.leaveOnlineLobby(true);
+      });
+      document.getElementById('btnBr99Ready').addEventListener('click', () => {
+        sound.unlock();
+        this.toggleLobbyReady();
+      });
+      document.getElementById('btnBr99CopyCode').addEventListener('click', () => {
+        if (this.roomCode) copyToClipboard(this.roomCode);
+      });
+      document.getElementById('btnBr99CopyUrl').addEventListener('click', () => {
+        if (!this.roomCode) return;
+        const url = location.href.split('?')[0] + '?br99=' + encodeURIComponent(this.roomCode);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(() => showToast('フレンド99招待リンクをコピーしました！')).catch(() => copyToClipboard(url));
+        } else {
+          copyToClipboard(url);
+        }
+      });
+
+      document.querySelectorAll('#br99TacticBar .br99-tactic-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          sound.unlock();
+          this.setTactic(btn.dataset.tactic);
+        });
+      });
+
+      document.getElementById('btnBr99Retry').addEventListener('click', () => {
+        if (this.isOnline) { showToast('オンライン99中はリトライできません（ロビーへ戻ってください）'); return; }
+        sound.unlock();
+        this.startSolo();
+      });
+      document.getElementById('btnBr99Pause').addEventListener('click', () => {
+        if (this.isOnline) { showToast('オンライン99中はポーズできません'); return; }
+        if ((this.active || this.paused) && !this.ended) this.togglePause();
+      });
+      document.getElementById('btnBr99Exit').addEventListener('click', () => {
+        this.exitToLobby();
+        showScreen('screenLobby');
+        renderProfileUI();
+      });
+
+      document.querySelectorAll('#br99TouchPad .touch-btn').forEach(btn => {
+        const act = btn.dataset.act;
+        const releaseTouch = () => {
+          btn.classList.remove('pressed');
+          if (!input.touchHeld.has(act)) return;
+          input.touchHeld.delete(act);
+          if (act === 'left' && input.horizDir === -1) {
+            input.horizDir = input.isActionDown('right') ? 1 : 0;
+            input.dasTimer = 0; input.arrTimer = 0;
+          } else if (act === 'right' && input.horizDir === 1) {
+            input.horizDir = input.isActionDown('left') ? -1 : 0;
+            input.dasTimer = 0; input.arrTimer = 0;
+          }
+        };
+        btn.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          sound.unlock();
+          if (!this.active || this.paused || this.ended) return;
+          btn.classList.add('pressed');
+          if (act === 'left' || act === 'right' || act === 'down') {
+            input.touchHeld.add(act);
+            if (act === 'left' || act === 'right') input.triggerActionPress(act);
+          } else {
+            input.triggerActionPress(act);
+          }
+        });
+        btn.addEventListener('pointerup', releaseTouch);
+        btn.addEventListener('pointercancel', releaseTouch);
+        btn.addEventListener('pointerleave', releaseTouch);
+      });
+    },
+
+    leaveOnlineLobby(showMsg = true) {
+      clearInterval(this.waitTimerId);
+      this.waitTimerId = null;
+      this.lobbyMode = 'none';
+      this.lobbyPlayers = [];
+      for (const c of this.onlinePeers.values()) { try { c.close(); } catch (e) {} }
+      this.onlinePeers.clear();
+      if (this.peer) { try { this.peer.destroy(); } catch (e) {} this.peer = null; }
+      document.getElementById('br99WaitBox').classList.remove('active');
+      document.getElementById('br99LaunchGrid').style.display = '';
+      if (showMsg) showToast('99人ロビーから退出しました');
+    },
+
+    openOnlineLobby(mode, roomCode) {
+      if (typeof Peer === 'undefined') {
+        showToast('PeerJSが読み込めない環境のためオンライン99は利用できません。ソロで99をお試しください。');
+        return;
+      }
+      this.leaveOnlineLobby(false);
+      this.lobbyMode = mode;
+      this.roomCode = roomCode || '';
+      this.waitSeconds = 60;
+
+      const selfEntry = {
+        peerId: 'local-' + DEVICE_ID,
+        name: profile.name || 'PLAYER',
+        rating: profile.rating || 1500,
+        title: profile.activeTitle || '',
+        isHuman: true,
+        ready: false,
+        isSelf: true
+      };
+      this.lobbyPlayers = [selfEntry];
+
+      document.getElementById('br99LaunchGrid').style.display = 'none';
+      document.getElementById('br99WaitBox').classList.add('active');
+      document.getElementById('br99LobbyTitle').textContent =
+        mode === 'room' ? `🔑 フレンド99 ロビー (${this.roomCode})` : '🌐 オンライン99 公開ロビー';
+      document.getElementById('br99RoomCodeBar').style.display = mode === 'room' ? 'flex' : 'none';
+      if (mode === 'room') document.getElementById('br99RoomCodeDisplay').textContent = this.roomCode;
+      this.renderLobbyUI();
+
+      clearInterval(this.waitTimerId);
+      this.waitTimerId = setInterval(() => {
+        if (this.lobbyMode === 'none') { clearInterval(this.waitTimerId); return; }
+        this.waitSeconds--;
+        this.renderLobbyUI();
+        if (this.waitSeconds <= 0) {
+          clearInterval(this.waitTimerId);
+          this.launchFromLobby();
+        }
+      }, 1000);
+
+      if (mode === 'room') {
+        this.initRoomPeer(this.roomCode);
+      } else {
+        this.initAutoLobbyPeer();
+      }
+    },
+
+    initAutoLobbyPeer() {
+      const slotId = 'puyotet-br99-auto-v1';
+      const p = new Peer(slotId);
+      this.peer = p;
+      this.isHost = true;
+      p.on('open', () => {
+        p.on('connection', (c) => this.handleLobbyConn(c, true));
+      });
+      p.on('error', () => {
+        // Fallback joiner if slot already hosted
+        try { p.destroy(); } catch (e) {}
+        this.isHost = false;
+        const p2 = new Peer();
+        this.peer = p2;
+        p2.on('open', () => {
+          const c = p2.connect(slotId, { reliable: true });
+          this.handleLobbyConn(c, false);
+        });
+      });
+    },
+
+    initRoomPeer(code) {
+      const hostId = 'puyotet-br99-room-' + code;
+      const p = new Peer(hostId);
+      this.peer = p;
+      this.isHost = true;
+      p.on('open', () => {
+        p.on('connection', (c) => this.handleLobbyConn(c, true));
+      });
+      p.on('error', () => {
+        try { p.destroy(); } catch (e) {}
+        this.isHost = false;
+        const p2 = new Peer();
+        this.peer = p2;
+        p2.on('open', () => {
+          const c = p2.connect(hostId, { reliable: true });
+          this.handleLobbyConn(c, false);
+        });
+      });
+    },
+
+    handleLobbyConn(c, asHost) {
+      c.on('open', () => {
+        this.onlinePeers.set(c.peer, c);
+        c.send({
+          type: 'br99Join',
+          peerId: this.peer.id,
+          name: profile.name || 'PLAYER',
+          rating: profile.rating || 1500,
+          title: profile.activeTitle || '',
+          ready: !!(this.lobbyPlayers[0] && this.lobbyPlayers[0].ready)
+        });
+        if (asHost) this.broadcastLobbyState();
+      });
+      c.on('data', (msg) => {
+        if (!msg || !msg.type) return;
+        if (msg.type === 'br99Join' || msg.type === 'br99Ready') {
+          const pid = msg.peerId || c.peer;
+          let entry = this.lobbyPlayers.find(x => x.peerId === pid);
+          if (!entry) {
+            entry = {
+              peerId: pid,
+              name: (msg.name || 'PLAYER').slice(0, 16),
+              rating: Number(msg.rating) || 1500,
+              title: msg.title || '',
+              isHuman: true,
+              ready: !!msg.ready,
+              isSelf: false
+            };
+            this.lobbyPlayers.push(entry);
+          } else {
+            entry.name = (msg.name || entry.name).slice(0, 16);
+            entry.rating = Number(msg.rating) || entry.rating;
+            entry.ready = !!msg.ready;
+          }
+          this.renderLobbyUI();
+          if (asHost) {
+            this.broadcastLobbyState();
+            this.checkAllReadyStart();
+          }
+        } else if (msg.type === 'br99LobbySync' && Array.isArray(msg.players)) {
+          const myReady = !!(this.lobbyPlayers[0] && this.lobbyPlayers[0].ready);
+          const merged = [{
+            peerId: this.peer.id,
+            name: profile.name || 'PLAYER',
+            rating: profile.rating || 1500,
+            title: profile.activeTitle || '',
+            isHuman: true,
+            ready: myReady,
+            isSelf: true
+          }];
+          for (const p of msg.players) {
+            if (p.peerId && p.peerId !== this.peer.id) {
+              merged.push({ ...p, isSelf: false, isHuman: true });
+            }
+          }
+          this.lobbyPlayers = merged;
+          if (typeof msg.waitSeconds === 'number') this.waitSeconds = msg.waitSeconds;
+          this.renderLobbyUI();
+        } else if (msg.type === 'br99Start') {
+          this.startFromLobbyRoster(msg.roster || this.lobbyPlayers, true);
+        } else if (msg.type === 'br99State' && this.active && !this.ended) {
+          const target = this.players.find(pl => pl.peerId === msg.peerId);
+          if (target && !target.isSelf) {
+            target.koCount = msg.koCount ?? target.koCount;
+            target.badges = msg.badges ?? target.badges;
+            if (msg.grid && target.board) target.board.grid = msg.grid;
+          }
+        } else if (msg.type === 'br99Atk' && this.active && !this.ended) {
+          this.handleIncomingOnlineAtk(msg.fromPeerId, msg.lines || 0);
+        } else if (msg.type === 'br99KO' && this.active && !this.ended) {
+          const victim = this.players.find(pl => pl.peerId === msg.peerId);
+          if (victim && victim.alive) {
+            this.eliminatePlayer(victim, msg.killerPeerId || null, false);
+          }
+        }
+      });
+      c.on('close', () => {
+        this.onlinePeers.delete(c.peer);
+        this.lobbyPlayers = this.lobbyPlayers.filter(x => x.peerId !== c.peer);
+        this.renderLobbyUI();
+        if (asHost) this.broadcastLobbyState();
+      });
+    },
+
+    broadcastLobbyState() {
+      const payload = {
+        type: 'br99LobbySync',
+        waitSeconds: this.waitSeconds,
+        players: this.lobbyPlayers.map(p => ({
+          peerId: p.isSelf ? this.peer.id : p.peerId,
+          name: p.name, rating: p.rating, title: p.title, ready: p.ready
+        }))
+      };
+      for (const c of this.onlinePeers.values()) {
+        if (c.open) { try { c.send(payload); } catch (e) {} }
+      }
+    },
+
+    toggleLobbyReady() {
+      const me = this.lobbyPlayers[0];
+      if (!me) return;
+      me.ready = !me.ready;
+      this.renderLobbyUI();
+      if (this.isHost) {
+        this.broadcastLobbyState();
+        this.checkAllReadyStart();
+      } else {
+        for (const c of this.onlinePeers.values()) {
+          if (c.open) {
+            try {
+              c.send({
+                type: 'br99Ready',
+                peerId: this.peer ? this.peer.id : me.peerId,
+                name: me.name, rating: me.rating, ready: me.ready
+              });
+            } catch (e) {}
+          }
+        }
+      }
+    },
+
+    checkAllReadyStart() {
+      if (!this.isHost || this.lobbyMode === 'none') return;
+      if (this.lobbyPlayers.length >= 1 && this.lobbyPlayers.every(p => p.ready)) {
+        this.launchFromLobby();
+      }
+    },
+
+    launchFromLobby() {
+      const roster = this.lobbyPlayers.slice(0, 99);
+      if (this.isHost) {
+        const msg = { type: 'br99Start', roster };
+        for (const c of this.onlinePeers.values()) {
+          if (c.open) { try { c.send(msg); } catch (e) {} }
+        }
+      }
+      this.startFromLobbyRoster(roster, true);
+    },
+
+    renderLobbyUI() {
+      const humans = this.lobbyPlayers.slice(0, 99);
+      const cpuFill = Math.max(0, 99 - humans.length);
+      document.getElementById('br99CountSummary').textContent =
+        `参加人数: ${humans.length} / 99（残り${cpuFill}枠はCPU補充）`;
+      document.getElementById('br99TimerBadge').textContent =
+        `⏳ 自動開始まで: ${Math.max(0, this.waitSeconds)}秒`;
+      const me = humans[0];
+      const readyBtn = document.getElementById('btnBr99Ready');
+      if (readyBtn && me) {
+        readyBtn.textContent = me.ready ? '✅ 準備完了（解除）' : '▶ スタート（準備完了）';
+        readyBtn.classList.toggle('btn-green', me.ready);
+      }
+      const listEl = document.getElementById('br99PlayerList');
+      listEl.innerHTML = humans.map(p =>
+        `<div class="br99-player-row">
+          <span>${escapeHtml(p.name)} <small style="color:var(--text-dim);">R${p.rating}</small></span>
+          <span style="color:${p.ready ? 'var(--green)' : 'var(--gold)'};">${p.ready ? '✅ READY' : '待機中'}</span>
+        </div>`
+      ).join('');
+    },
 
     startSolo() {
-      br99Net.cleanup();
-      const roster = [{ slot: 0, isHuman: true, peerId: 'self', name: profile.name || 'PLAYER', rating: profile.rating || 1500 }];
-      for (let i = 1; i < 99; i++) {
-        const baseName = BR99_CPU_NAMES[(i - 1) % BR99_CPU_NAMES.length];
-        roster.push({ slot: i, isHuman: false, peerId: '', name: `${baseName}-${i}`, rating: 1100 + ((i * 43) % 1200) });
-      }
-      this.initMatch(false, true, 0, roster);
+      this.startFromLobbyRoster([{
+        peerId: 'self',
+        name: profile.name || 'PLAYER',
+        rating: profile.rating || 1500,
+        title: profile.activeTitle || '',
+        isHuman: true,
+        isSelf: true
+      }], false);
     },
 
-    startOnline(isHost, mySlot, roster) {
-      this.initMatch(true, isHost, mySlot, roster);
-    },
-
-    initMatch(isOnline, isHost, mySlot, roster) {
-      battle.soloSubType = null;
-      battle.zeroGravity = false;
-      battle.active = false;
-      battle.ended = true;
-      sound.stopBGM();
+    startFromLobbyRoster(roster, isOnline) {
+      clearInterval(this.waitTimerId);
+      this.waitTimerId = null;
+      this.lobbyMode = 'none';
+      document.getElementById('br99WaitBox').classList.remove('active');
+      document.getElementById('br99LaunchGrid').style.display = '';
+      document.getElementById('overlayResult').classList.remove('active');
+      document.getElementById('overlayPause').classList.remove('active');
 
       this.isOpen = true;
+      this.isOnline = !!isOnline;
       this.active = false;
       this.paused = false;
       this.ended = false;
-      this.isOnline = isOnline;
-      this.isHost = isHost;
-      this.isLocalSimFallback = false;
-      this.mySlot = mySlot;
       this.tactic = 'random';
+      this.counterAttackers = [];
       this.koCount = 0;
-      this.badgeBits = 0;
-      this.lastAttackerSlot = -1;
-      this.phase = 0;
-      this.elapsedSec = 0;
-      this.syncAccum = 0;
-      this.selfShake = { mag: 0, time: 0 };
+      this.badges = 0;
+      this.speedTier = 1;
+      this.shownTop50 = false;
+      this.shownTop10 = false;
+      this.elapsed = 0;
+      this.onlineSyncAccum = 0;
+      this.selfShake = { time: 0, mag: 0 };
+      this.players = [];
 
-      // Dynamic CPU strength based on participating real players' rating
-      const humanRatings = roster.filter(r => r.isHuman).map(r => Number(r.rating) || 1500);
-      const avgHumanR = humanRatings.length
-        ? humanRatings.reduce((a, b) => a + b, 0) / humanRatings.length
+      const humanEntries = (Array.isArray(roster) ? roster : []).slice(0, 99);
+      const avgRating = humanEntries.length > 0
+        ? Math.round(humanEntries.reduce((s, x) => s + (Number(x.rating) || 1500), 0) / humanEntries.length)
         : (profile.rating || 1500);
-      this.baseRating = Math.round(avgHumanR);
-      // rateFactor: 0.0 (R1100 beginner) -> ~0.36 (R1500) -> ~0.64 (R1800) -> 1.0 (R2200+ master)
-      this.rateFactor = Math.max(0, Math.min(1, (this.baseRating - 1100) / 1100));
+      const cpuDiff = avgRating >= 1950 ? 'impossible' : (avgRating >= 1700 ? 'hard' : (avgRating >= 1400 ? 'normal' : 'easy'));
 
-      this.players = roster.map((r, idx) => {
-        // Individual CPU tier distribution (30% weak, 45% normal, 20% strong, 5% ace) shifted by rateFactor
-        const bucket = (idx * 31) % 100;
-        let tierOffset = 0;
-        if (bucket < 30) tierOffset = -0.18;
-        else if (bucket < 75) tierOffset = 0.0;
-        else if (bucket < 95) tierOffset = 0.16;
-        else tierOffset = 0.28;
-        const baseSkill = 0.24 + this.rateFactor * 0.48 + tierOffset + ((idx * 13) % 11 - 5) * 0.012;
-        const skill = Math.max(0.12, Math.min(0.96, baseSkill));
-        const cpuR = Math.max(800, Math.round(this.baseRating + tierOffset * 700 + ((idx * 29) % 180) - 90));
-        return {
-          slot: r.slot ?? idx,
-          isHuman: !!r.isHuman,
-          name: r.name || `CPU-${idx}`,
-          rating: r.isHuman ? (r.rating || 1500) : cpuR,
+      // Create human slots first
+      for (let i = 0; i < humanEntries.length; i++) {
+        const h = humanEntries[i];
+        const isSelf = !!h.isSelf || (h.peerId && this.peer && h.peerId === this.peer.id) || i === 0;
+        const slot = {
+          id: i,
+          peerId: h.peerId || ('h-' + i),
+          name: (h.name || 'PLAYER').slice(0, 16),
+          rating: Number(h.rating) || 1500,
+          isHuman: true,
+          isSelf,
           alive: true,
-          heights: Array(10).fill(0),
-          danger: false,
-          badgeBits: 0,
-          target: -1,
-          tactic: ['random', 'ko', 'badges', 'attackers'][idx % 4],
           koCount: 0,
-          skill,
-          simTimer: 0.6 + Math.random() * 1.1,
-          lastAttacker: -1
+          badges: 0,
+          attackerCount: 0,
+          targetId: null,
+          board: null,
+          cpu: null,
+          aiTimer: 0,
+          aiInterval: 0.45
         };
-      });
-
-      this.otherSlots = [];
-      for (let i = 0; i < 99; i++) {
-        if (i !== this.mySlot) this.otherSlots.push(i);
-      }
-
-      // Initial CPU targets with hate dispersion (avoid piling onto human players)
-      for (let i = 0; i < 99; i++) {
-        if (i !== this.mySlot && !this.players[i].isHuman) {
-          this.players[i].target = this.pickTargetFor(i, this.players[i].tactic);
+        if (isSelf) {
+          slot.board = new TetrisBoard(
+            true,
+            (fromSt, amt) => this.onSelfAttack(amt),
+            () => this.onSelfKO(),
+            null,
+            null,
+            (mag, dur) => { this.selfShake.mag = Math.max(this.selfShake.mag, mag); this.selfShake.time = Math.max(this.selfShake.time, dur); }
+          );
+          this.self = slot;
+          this.selfBoard = slot.board;
+        } else {
+          slot.board = new TetrisBoard(false, null, null, null, null, null);
         }
+        this.players.push(slot);
       }
-      this.currentTarget = this.pickTargetFor(this.mySlot, this.tactic);
-      this.players[this.mySlot].target = this.currentTarget;
 
-      // Create real Guideline TetrisBoard for self
-      this.selfBoard = new TetrisBoard(
-        true,
-        (_style, lines) => this.onSelfAttack(lines),
-        () => this.onSelfKO(),
-        null,
-        null,
-        (m, d) => { this.selfShake.mag = Math.max(this.selfShake.mag, m); this.selfShake.time = Math.max(this.selfShake.time, d); }
-      );
+      // Fill remaining slots up to 99 with CPUs scaled to lobby rating
+      for (let i = this.players.length; i < 99; i++) {
+        const diff = cpuDiff === 'impossible' && i > 20 ? 'hard' : cpuDiff;
+        const interval = diff === 'impossible' ? (0.14 + Math.random() * 0.14)
+          : diff === 'hard' ? (0.24 + Math.random() * 0.22)
+          : diff === 'normal' ? (0.38 + Math.random() * 0.35)
+          : (0.65 + Math.random() * 0.55);
+        const slot = {
+          id: i,
+          peerId: 'cpu-' + i,
+          name: BR99_CPU_NAMES[i % BR99_CPU_NAMES.length],
+          rating: avgRating + Math.round((Math.random() - 0.5) * 180),
+          isHuman: false,
+          isSelf: false,
+          alive: true,
+          koCount: 0,
+          badges: 0,
+          attackerCount: 0,
+          targetId: null,
+          board: new TetrisBoard(false, null, null, null, null, null),
+          cpu: new CpuController(diff),
+          aiTimer: Math.random() * interval,
+          aiInterval: interval
+        };
+        this.seedInitialCpuStack(slot.board, diff);
+        this.players.push(slot);
+      }
 
-      document.getElementById('btnBr99Retry').style.display = isOnline ? 'none' : 'inline-flex';
-      document.getElementById('btnBr99Pause').style.display = isOnline ? 'none' : 'inline-flex';
-      document.getElementById('overlayResult').classList.remove('active');
-      document.getElementById('overlayPause').classList.remove('active');
-      this.setTactic('random', true);
-      showScreen('screenBr99');
+      this.recomputeTargetsAndAttackers();
       this.updateHUD();
+      showScreen('screenBr99');
+      document.getElementById('br99TouchPad').classList.toggle('hidden', false);
       this.render();
 
-      // Short 3-2-1 countdown
-      this.countdownVal = 3;
-      this.countdownTimer = 0.85;
-      this.showCallout(`👑 TETRIS 99 (CPU基準 R${this.baseRating}) — 3`, 0.85);
-      sound.playSE('countdown');
+      sound.resetBgmSteps();
+      sound.setBgmTrack('tetris');
+      battle.countdownActive = true;
+      battle.startCountdown();
     },
 
-    showCallout(text, dur = 2.0) {
-      const el = document.getElementById('br99Callout');
-      if (!el) return;
-      el.textContent = text;
-      el.classList.add('show');
-      this.calloutTimer = dur;
-    },
-
-    setTactic(t, silent = false) {
-      this.tactic = t;
-      document.querySelectorAll('#br99TacticBar .br99-tactic-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.tactic === t);
-      });
-      if (this.players[this.mySlot]) {
-        this.players[this.mySlot].tactic = t;
-        this.currentTarget = this.pickTargetFor(this.mySlot, t);
-        this.players[this.mySlot].target = this.currentTarget;
-      }
-      if (!silent) sound.playSE('move');
-    },
-
-    togglePause() {
-      if (this.isOnline || this.ended) return;
-      this.paused = !this.paused;
-      document.getElementById('btnBr99Pause').textContent = this.paused ? '▶ 再開' : '⏸ ポーズ';
-      if (this.paused) {
-        sound.stopBGM();
-        this.showCallout('⏸ PAUSED', 999);
-      } else {
-        sound.setBgmTrack('tetris');
-        sound.startBGM();
-        this.calloutTimer = 0.01;
-      }
-    },
-
-    exitToLobby() {
-      this.isOpen = false;
-      this.active = false;
-      this.paused = false;
-      this.ended = true;
-      sound.stopBGM();
-      sound.setFastMode(false);
-      br99Net.cleanup();
-      updateBr99RecordBanner();
-      showScreen('screenLobby');
-    },
-
-    activateLocalFallback() {
-      if (this.isLocalSimFallback) return;
-      this.isLocalSimFallback = true;
-      this.isHost = true;
-      this.players.forEach((p, idx) => {
-        if (idx !== this.mySlot) p.isHuman = false;
-      });
-      showToast('ホスト切断：ローカルCPUシミュレーションへ自動切替しました');
-    },
-
-    convertSlotToCpu(slot) {
-      const p = this.players[slot];
-      if (p && p.alive) {
-        p.isHuman = false;
-        p.name = p.name + '(CPU)';
+    seedInitialCpuStack(b, diff) {
+      const rowsToSeed = diff === 'impossible' ? 5 : (diff === 'hard' ? 4 : 3);
+      const types = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
+      for (let r = b.rows - rowsToSeed; r < b.rows; r++) {
+        const hole = Math.floor(Math.random() * b.cols);
+        for (let c = 0; c < b.cols; c++) {
+          if (c !== hole && Math.random() < 0.85) {
+            b.grid[r][c] = types[Math.floor(Math.random() * types.length)];
+          }
+        }
       }
     },
 
@@ -9761,799 +9457,515 @@ body.theme-light .lb-summary { color: var(--text-main); }
       return this.players.filter(p => p.alive);
     },
 
-    pickRandomAliveExcept(slot) {
-      const cands = this.players.filter(p => p.alive && p.slot !== slot);
-      if (!cands.length) return -1;
-      return cands[Math.floor(Math.random() * cands.length)].slot;
+    setTactic(tac) {
+      if (!['random', 'ko', 'badges', 'attackers'].includes(tac)) return;
+      this.tactic = tac;
+      document.querySelectorAll('#br99TacticBar .br99-tactic-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tactic === tac);
+      });
+      this.recomputeTargetsAndAttackers();
     },
 
-    getAttackersOf(slot) {
-      return this.players.filter(p => p.alive && p.slot !== slot && p.target === slot);
-    },
+    recomputeTargetsAndAttackers() {
+      const alive = this.getAlivePlayers();
+      for (const p of this.players) p.attackerCount = 0;
 
-    pickTargetFor(slot, tactic) {
-      const allCands = this.players.filter(p => p.alive && p.slot !== slot);
-      if (!allCands.length) return -1;
-      const actor = this.players[slot];
-      const isCpuActor = actor && !actor.isHuman;
+      // Choose target for each alive player (with CPU hate dispersion)
+      for (const p of alive) {
+        const enemies = alive.filter(e => e.id !== p.id);
+        if (enemies.length === 0) { p.targetId = null; continue; }
 
-      // Hate dispersion for CPUs: prevent excessive lock-on onto human players
-      let cands = allCands;
-      if (isCpuActor) {
-        const cpuOnly = allCands.filter(p => !p.isHuman);
-        if (cpuOnly.length > 0) {
-          const aliveCount = allCands.length + 1;
-          // Human target chance stays very low (~2-4% in 99-player phase, gently rises only in TOP 10)
-          const humanChance = aliveCount <= 10 ? 0.14 : (aliveCount <= 30 ? 0.055 : 0.025);
-          const allowHuman = Math.random() < humanChance;
-          if (!allowHuman) {
-            cands = cpuOnly;
+        if (p.isSelf) {
+          if (this.tactic === 'ko') {
+            enemies.sort((a, b) => a.board.pendingGarbage - b.board.pendingGarbage);
+            const lowHp = enemies.filter(e => this.estimateBoardDanger(e.board) >= 0.55);
+            const pool = lowHp.length ? lowHp : enemies;
+            p.targetId = pool[0].id;
+          } else if (this.tactic === 'badges') {
+            enemies.sort((a, b) => b.badges - a.badges);
+            p.targetId = enemies[0].id;
+          } else if (this.tactic === 'attackers') {
+            const attList = enemies.filter(e => this.counterAttackers.includes(e.id));
+            p.targetId = attList.length ? attList[p.id % attList.length].id : enemies[Math.floor(Math.random() * enemies.length)].id;
           } else {
-            // Cap simultaneous CPU lock-ons per human player (early: 2, mid: 4, TOP 10: 3)
-            const maxLockPerHuman = aliveCount <= 10 ? 3 : (aliveCount <= 50 ? 4 : 2);
-            const filtered = allCands.filter(p => {
-              if (!p.isHuman) return true;
-              const curLocks = this.players.filter(o => o.alive && !o.isHuman && o.target === p.slot).length;
-              return curLocks < maxLockPerHuman;
-            });
-            cands = filtered.length > 0 ? filtered : cpuOnly;
+            p.targetId = enemies[Math.floor(Math.random() * enemies.length)].id;
           }
-        }
-      }
-
-      if (tactic === 'ko') {
-        if (isCpuActor && cands.length > 5) {
-          // CPUs pick among top-6 highest boards instead of all piling onto 1 player
-          const sorted = cands.slice().sort((a, b) => Math.max(...b.heights) - Math.max(...a.heights));
-          const topK = sorted.slice(0, Math.min(6, sorted.length));
-          return topK[Math.floor(Math.random() * topK.length)].slot;
-        }
-        let best = cands[0], bestH = -1;
-        for (const c of cands) {
-          const mh = Math.max(...c.heights);
-          if (mh > bestH) { bestH = mh; best = c; }
-        }
-        return best.slot;
-      }
-      if (tactic === 'badges') {
-        if (isCpuActor && cands.length > 5) {
-          const sorted = cands.slice().sort((a, b) => (b.badgeBits || 0) - (a.badgeBits || 0));
-          const topK = sorted.slice(0, Math.min(6, sorted.length));
-          return topK[Math.floor(Math.random() * topK.length)].slot;
-        }
-        let best = cands[0], bestB = -1;
-        for (const c of cands) {
-          if (c.badgeBits > bestB) { bestB = c.badgeBits; best = c; }
-        }
-        return best.slot;
-      }
-      if (tactic === 'attackers') {
-        let atks = this.getAttackersOf(slot);
-        if (isCpuActor && atks.length > 0) {
-          // CPUs also avoid overly counter-locking humans when other CPU attackers exist
-          const cpuAtks = atks.filter(a => !a.isHuman);
-          if (cpuAtks.length > 0 && Math.random() < 0.85) atks = cpuAtks;
-          else if (atks.every(a => a.isHuman) && Math.random() < 0.72) atks = [];
-        }
-        if (atks.length > 0) return atks[Math.floor(Math.random() * atks.length)].slot;
-      }
-      return cands[Math.floor(Math.random() * cands.length)].slot;
-    },
-
-    computeSelfHeights() {
-      const h = Array(10).fill(0);
-      if (!this.selfBoard) return h;
-      const g = this.selfBoard.grid;
-      for (let c = 0; c < 10; c++) {
-        for (let r = 2; r < 22; r++) {
-          if (g[r][c]) { h[c] = 22 - r; break; }
-        }
-      }
-      return h;
-    },
-
-    getSlotScreenPos(slot) {
-      if (slot === this.mySlot) {
-        const rect = document.getElementById('br99SelfCanvas').getBoundingClientRect();
-        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      }
-      const idx = this.otherSlots.indexOf(slot);
-      if (idx < 0) return null;
-      const isLeft = idx < 49;
-      const localIdx = isLeft ? idx : idx - 49;
-      const col = localIdx % 7;
-      const row = Math.floor(localIdx / 7);
-      const canvas = document.getElementById(isLeft ? 'br99LeftCanvas' : 'br99RightCanvas');
-      if (!canvas) return null;
-      const rect = canvas.getBoundingClientRect();
-      return {
-        x: rect.left + ((col + 0.5) / 7) * rect.width,
-        y: rect.top + ((row + 0.5) / 7) * rect.height
-      };
-    },
-
-    onSelfAttack(rawLines) {
-      if (!this.active || this.ended || rawLines <= 0) return;
-      const badgeInfo = calcBr99BadgeLevel(this.badgeBits);
-      const attackers = this.getAttackersOf(this.mySlot);
-      const bonus = this.tactic === 'attackers' ? calcBr99AttackerBonus(attackers.length) : 0;
-      const totalLines = Math.min(16, Math.max(1, Math.round((rawLines + bonus) * badgeInfo.mult)));
-
-      // Visual attack orbs
-      const targets = (this.tactic === 'attackers' && attackers.length > 0)
-        ? attackers.map(a => a.slot)
-        : [this.currentTarget >= 0 && this.players[this.currentTarget]?.alive ? this.currentTarget : this.pickTargetFor(this.mySlot, this.tactic)];
-
-      const srcPos = this.getSlotScreenPos(this.mySlot);
-      if (srcPos) {
-        targets.slice(0, 5).forEach(tSlot => {
-          const dstPos = this.getSlotScreenPos(tSlot);
-          if (dstPos) {
-            projectiles.push({
-              sx: srcPos.x, sy: srcPos.y,
-              cx: (srcPos.x + dstPos.x) / 2, cy: Math.min(srcPos.y, dstPos.y) - 60,
-              ex: dstPos.x, ey: dstPos.y,
-              t: 0, speed: 2.6, color: '#fbbf24', size: 8
-            });
-          }
-        });
-      }
-
-      if (this.isOnline && !this.isHost && !this.isLocalSimFallback) {
-        br99Net.sendToHost({ type: 'br99Attack', lines: totalLines, tactic: this.tactic, target: this.currentTarget });
-      } else {
-        this.hostHandleAttack(this.mySlot, totalLines, this.tactic, this.currentTarget);
-      }
-    },
-
-    hostHandleAttack(fromSlot, lines, tactic, preferredTarget) {
-      if (lines <= 0) return;
-      const attacker = this.players[fromSlot];
-      if (!attacker || !attacker.alive) return;
-
-      let targetSlots = [];
-      if (tactic === 'attackers') {
-        const atks = this.getAttackersOf(fromSlot);
-        if (atks.length > 0) targetSlots = atks.map(a => a.slot);
-      }
-      if (targetSlots.length === 0) {
-        let t = (typeof preferredTarget === 'number' && preferredTarget >= 0 && this.players[preferredTarget]?.alive && preferredTarget !== fromSlot)
-          ? preferredTarget : this.pickTargetFor(fromSlot, tactic);
-        if (t >= 0) targetSlots = [t];
-      }
-
-      for (const tSlot of targetSlots) {
-        const victim = this.players[tSlot];
-        if (!victim || !victim.alive) continue;
-        victim.lastAttacker = fromSlot;
-        if (tSlot === this.mySlot) {
-          this.receiveIncomingGarbage(lines, fromSlot);
-        } else if (victim.isHuman && this.isOnline && !this.isLocalSimFallback) {
-          br99Net.sendToSlot(tSlot, { type: 'br99Garbage', lines, fromSlot });
         } else {
-          // CPU takes garbage directly on its height map
-          const hole = Math.floor(Math.random() * 10);
-          for (let c = 0; c < 10; c++) {
-            victim.heights[c] = Math.min(20, victim.heights[c] + (c === hole ? Math.max(0, lines - 1) : lines));
-          }
-          const maxH = Math.max(...victim.heights);
-          victim.danger = maxH >= 15;
-          if (maxH >= 20) {
-            this.hostHandleSlotKO(tSlot, fromSlot);
+          // CPU target selection: 75% dispersed random/badge, 25% opportunistic KO/counter
+          const roll = Math.random();
+          if (roll < 0.25 && this.self && this.self.alive && this.estimateBoardDanger(this.self.board) >= 0.72) {
+            p.targetId = this.self.id;
+          } else if (roll < 0.45) {
+            enemies.sort((a, b) => b.badges - a.badges);
+            p.targetId = enemies[Math.min(enemies.length - 1, Math.floor(Math.random() * 4))].id;
+          } else {
+            p.targetId = enemies[Math.floor(Math.random() * enemies.length)].id;
           }
         }
       }
+
+      for (const p of alive) {
+        if (p.targetId !== null) {
+          const tgt = this.players[p.targetId];
+          if (tgt && tgt.alive) tgt.attackerCount++;
+        }
+      }
+
+      if (this.self) {
+        this.counterAttackers = alive
+          .filter(e => e.id !== this.self.id && e.targetId === this.self.id)
+          .map(e => e.id);
+        const cBtn = document.getElementById('br99CounterBtn');
+        if (cBtn) cBtn.textContent = `4: カウンター (${this.counterAttackers.length})`;
+      }
     },
 
-    receiveIncomingGarbage(lines, fromSlot) {
-      if (!this.active || this.ended || !this.selfBoard) return;
-      this.lastAttackerSlot = typeof fromSlot === 'number' ? fromSlot : this.lastAttackerSlot;
-      this.selfBoard.receiveGarbage(lines);
+    estimateBoardDanger(b) {
+      if (!b || !b.grid) return 0;
+      let highestRow = 22;
+      for (let r = 0; r < b.rows; r++) {
+        if (b.grid[r].some(c => c !== null)) { highestRow = r; break; }
+      }
+      const stackFactor = Math.max(0, (20 - highestRow) / 18);
+      const garbFactor = Math.min(1, (b.pendingGarbage || 0) / 12);
+      return Math.min(1, stackFactor * 0.7 + garbFactor * 0.3);
     },
 
-    hostHandleSlotKO(victimSlot, killerSlot) {
-      const victim = this.players[victimSlot];
+    onSelfAttack(baseLines) {
+      if (!this.active || this.ended || !this.self) return;
+      const lvl = getBr99BadgeLevel(this.badges);
+      const mult = 1 + (BR99_BADGE_BONUSES[lvl] || 0);
+      const finalLines = Math.max(1, Math.round(baseLines * mult * 10) / 10);
+
+      const aliveEnemies = this.getAlivePlayers().filter(e => !e.isSelf);
+      if (aliveEnemies.length === 0) return;
+
+      let targets = [];
+      if (this.tactic === 'attackers') {
+        const list = this.counterAttackers
+          .map(id => this.players[id])
+          .filter(p => p && p.alive && !p.isSelf);
+        targets = list.length ? list : [aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)]];
+      } else {
+        const tgt = (this.self.targetId !== null && this.players[this.self.targetId] && this.players[this.self.targetId].alive)
+          ? this.players[this.self.targetId]
+          : aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+        targets = [tgt];
+      }
+
+      const splitLines = Math.max(0.5, Math.round((finalLines / targets.length) * 10) / 10);
+      for (const tgt of targets) {
+        if (tgt.isHuman && !tgt.isSelf && this.isOnline) {
+          const conn = this.onlinePeers.get(tgt.peerId);
+          if (conn && conn.open) {
+            try { conn.send({ type: 'br99Atk', fromPeerId: this.peer ? this.peer.id : 'self', lines: splitLines }); } catch (e) {}
+          }
+        } else if (!tgt.isHuman) {
+          tgt.board.receiveGarbage(splitLines);
+          if (this.estimateBoardDanger(tgt.board) >= 0.92 || tgt.board.pendingGarbage >= 12) {
+            this.eliminatePlayer(tgt, this.self.id, true);
+          }
+        }
+      }
+      sound.playSE('attack');
+    },
+
+    handleIncomingOnlineAtk(fromPeerId, lines) {
+      if (!this.active || this.ended || !this.selfBoard || !this.self || !this.self.alive) return;
+      if (lines > 0) this.selfBoard.receiveGarbage(lines);
+      const attacker = this.players.find(p => p.peerId === fromPeerId);
+      if (attacker && attacker.alive && !this.counterAttackers.includes(attacker.id)) {
+        this.counterAttackers.push(attacker.id);
+      }
+    },
+
+    eliminatePlayer(victim, killerId, isSelfKill) {
       if (!victim || !victim.alive) return;
       victim.alive = false;
-      victim.danger = false;
+      victim.board.dead = true;
 
-      const kSlot = (typeof killerSlot === 'number' && killerSlot >= 0 && killerSlot !== victimSlot && this.players[killerSlot]?.alive)
-        ? killerSlot : (victim.lastAttacker >= 0 && this.players[victim.lastAttacker]?.alive ? victim.lastAttacker : -1);
-
-      if (kSlot >= 0) {
-        const killer = this.players[kSlot];
-        const gained = (victim.badgeBits || 0) + 1;
-        killer.badgeBits += gained;
-        killer.koCount = (killer.koCount || 0) + 1;
-        if (kSlot === this.mySlot) {
-          this.onGotKO(victim.name, gained);
-        } else if (killer.isHuman && this.isOnline && !this.isLocalSimFallback) {
-          br99Net.sendToSlot(kSlot, { type: 'br99KO', victimName: victim.name, gainedBits: gained });
+      if (killerId !== null && killerId !== undefined) {
+        const killer = this.players[killerId];
+        if (killer && killer.id !== victim.id) {
+          killer.koCount++;
+          killer.badges += 1 + Math.floor(victim.badges * 0.5);
+          if (killer.isSelf) {
+            this.koCount = killer.koCount;
+            this.badges = killer.badges;
+            this.showCallout(`💥 K.O.! (${this.koCount})`);
+            sound.playSE('tetris');
+            if (this.isOnline) {
+              const payload = { type: 'br99State', peerId: this.peer ? this.peer.id : 'self', koCount: this.koCount, badges: this.badges };
+              for (const c of this.onlinePeers.values()) { if (c.open) { try { c.send(payload); } catch (e) {} } }
+            }
+          }
         }
       }
 
-      // Retarget anyone who was aiming at victim
-      for (const p of this.players) {
-        if (p.alive && p.target === victimSlot) {
-          p.target = this.pickTargetFor(p.slot, p.tactic);
-        }
-      }
-      if (this.currentTarget === victimSlot) {
-        this.currentTarget = this.pickTargetFor(this.mySlot, this.tactic);
-        if (this.players[this.mySlot]) this.players[this.mySlot].target = this.currentTarget;
-      }
-
-      this.checkPhaseAndVictory();
-    },
-
-    onGotKO(victimName, gainedBits) {
-      this.koCount++;
-      this.badgeBits += gainedBits;
-      if (this.players[this.mySlot]) {
-        this.players[this.mySlot].badgeBits = this.badgeBits;
-        this.players[this.mySlot].koCount = this.koCount;
-      }
-      sound.playSE('upset');
-      this.showCallout(`💥 K.O.! ${victimName} (+${gainedBits}バッジ)`, 1.9);
-      this.updateHUD();
-    },
-
-    checkPhaseAndVictory() {
-      const aliveList = this.getAlivePlayers();
-      const aliveCount = aliveList.length;
-
-      if (this.phase < 1 && aliveCount <= 50 && aliveCount > 10) {
-        this.phase = 1;
-        if (this.selfBoard) this.selfBoard.level = Math.max(this.selfBoard.level, 7);
+      const alive = this.getAlivePlayers();
+      if (!this.shownTop50 && alive.length <= 50 && alive.length > 10) {
+        this.shownTop50 = true;
+        this.speedTier = Math.max(this.speedTier, 2);
+        this.showCallout('⚡ TOP 50! SPEED UP');
         sound.playSE('swapSwitch');
-        this.showCallout('⚡ TOP 50! スピードUP!', 2.4);
-      } else if (this.phase < 2 && aliveCount <= 10 && aliveCount > 1) {
-        this.phase = 2;
-        if (this.selfBoard) this.selfBoard.level = Math.max(this.selfBoard.level, 12);
-        sound.setFastMode(true);
-        sound.playSE('warning');
-        this.showCallout('🔥 TOP 10! 最終決戦!', 2.6);
+      }
+      if (!this.shownTop10 && alive.length <= 10 && alive.length > 1) {
+        this.shownTop10 = true;
+        this.speedTier = 3;
+        this.showCallout('🔥 TOP 10! MAX SPEED');
+        sound.playSE('swapWarn');
       }
 
-      if (aliveCount <= 1 && this.players[this.mySlot]?.alive && !this.ended) {
-        this.finishMatch(1);
+      this.recomputeTargetsAndAttackers();
+      this.updateHUD();
+
+      if (this.self && this.self.alive && alive.length === 1) {
+        this.finishBr99(1);
       }
     },
 
     onSelfKO() {
-      if (this.ended) return;
-      const rank = this.getAlivePlayers().length;
-      if (this.players[this.mySlot]) this.players[this.mySlot].alive = false;
-      if (this.isOnline && !this.isHost && !this.isLocalSimFallback) {
-        br99Net.sendToHost({ type: 'br99Dead', killerSlot: this.lastAttackerSlot });
-      } else {
-        this.hostHandleSlotKO(this.mySlot, this.lastAttackerSlot);
+      if (!this.active || this.ended || !this.self) return;
+      const aliveCount = this.getAlivePlayers().length;
+      const placement = Math.max(1, Math.min(99, aliveCount));
+      this.self.alive = false;
+      this.selfBoard.dead = true;
+      if (this.isOnline) {
+        const payload = { type: 'br99KO', peerId: this.peer ? this.peer.id : 'self', killerPeerId: null };
+        for (const c of this.onlinePeers.values()) { if (c.open) { try { c.send(payload); } catch (e) {} } }
       }
-      this.finishMatch(Math.max(2, rank));
+      this.finishBr99(placement);
     },
 
-    finishMatch(rank) {
+    finishBr99(placement) {
       if (this.ended) return;
       this.ended = true;
       this.active = false;
+      battle.active = false;
+      battle.countdownActive = false;
       sound.stopBGM();
-      sound.setFastMode(false);
 
-      const isWin = rank === 1;
-      const coins = isWin ? 300 : (rank <= 10 ? 120 : (rank <= 50 ? 50 : 20));
-      profile.coins = (profile.coins || 0) + coins;
-      if (!profile.records) profile.records = {};
-      let isNewBest = false;
-      if (profile.records.bestBr99Rank === null || profile.records.bestBr99Rank === undefined || rank < profile.records.bestBr99Rank) {
-        profile.records.bestBr99Rank = rank;
-        isNewBest = true;
+      const isWin = placement === 1;
+      addDailyProgress('play2', 1);
+      if (isWin) {
+        addDailyProgress('win1', 1);
+        unlockAchievement('first_win');
+        unlockAchievement('br99_win');
+      }
+
+      profile.records = profile.records || {};
+      let isNewRecord = false;
+      if (profile.records.bestBr99Rank === null || profile.records.bestBr99Rank === undefined || placement < profile.records.bestBr99Rank) {
+        profile.records.bestBr99Rank = placement;
+        isNewRecord = true;
       }
       if (isWin) {
         profile.records.br99Wins = (profile.records.br99Wins || 0) + 1;
-        unlockAchievement('br99_win');
       }
-      addDailyProgress('play2', 1);
-      if (isWin) addDailyProgress('win1', 1);
+
+      const earnedCoins = isWin ? 200 : (placement <= 10 ? 70 : (placement <= 50 ? 35 : 15));
+      profile.coins = (profile.coins || 0) + earnedCoins;
       saveProfile(profile);
-      renderProfileUI();
       updateBr99RecordBanner();
-
-      // Sync leaderboard with online peers & Cloud Firestore
-      syncCloudNow(true, false);
-      if (this.isOnline && !this.isLocalSimFallback) {
-        const syncMsg = { type: 'lbSync', lbRecord: buildPublicRecord() };
-        if (this.isHost) br99Net.broadcastToClients(syncMsg);
-        else br99Net.sendToHost(syncMsg);
+      renderProfileUI();
+      if (this.isOnline) {
+        for (const c of this.onlinePeers.values()) {
+          if (c.open) { try { c.send({ type: 'lbSync', lbRecord: buildPublicRecord() }); } catch (e) {} }
+        }
       }
-
-      sound.playSE(isWin ? 'rankUp' : (rank <= 10 ? 'win' : 'lose'));
+      syncCloudNow(true, false);
 
       const titleEl = document.getElementById('resTitle');
-      titleEl.textContent = isWin ? '👑 TETRIS MAXIMUS — 1ST PLACE!' : `#${rank} / 99`;
-      titleEl.className = 'result-title ' + (isWin || rank <= 10 ? 'win' : 'lose');
-      document.getElementById('resSub').textContent = isWin
-        ? `99人の頂点に立ちました！ K.O.: ${this.koCount} / バッジ Lv.${calcBr99BadgeLevel(this.badgeBits).lv}`
-        : `最終順位: ${rank}位 / 99人  |  K.O.: ${this.koCount}  |  生存時間: ${Math.floor(this.elapsedSec)}秒`;
-
-      const badgesEl = document.getElementById('resSpecialBadges');
-      badgesEl.innerHTML =
-        (isWin ? '<span class="result-special">👑 TETRIS MAXIMUS!</span>' : '') +
-        (isNewBest ? '<span class="result-special" style="background:linear-gradient(135deg,#38bdf8,#a855f7);">🏆 BEST RANK!</span>' : '') +
-        `<span class="result-special" style="background:linear-gradient(135deg,#eab308,#f59e0b);color:#1c1917;">🪙 +${coins} COINS GET!</span>`;
-
+      titleEl.textContent = isWin ? '👑 TETRIS MAXIMUS! #1' : `#${placement} / 99`;
+      titleEl.className = 'result-title ' + (isWin ? 'win' : 'lose');
+      document.getElementById('resSub').textContent =
+        `K.O.: ${this.koCount}回 / バッジ: ${this.badges}個 / 生存時間: ${this.elapsed.toFixed(1)}秒`;
+      document.getElementById('resSpecialBadges').innerHTML =
+        (isNewRecord ? '<span class="result-special">🏆 BEST RANK!</span>' : '') +
+        `<span class="result-special" style="background:linear-gradient(135deg,#eab308,#f59e0b);color:#1c1917;">🪙 +${earnedCoins} COINS GET!</span>`;
       document.getElementById('resRatingBox').style.display = 'none';
-      const badgeLv = calcBr99BadgeLevel(this.badgeBits);
-      const statItems = [
-        ['最終順位', `#${rank} / 99`],
-        ['K.O.数', `${this.koCount}`],
-        ['バッジ', `Lv.${badgeLv.lv} (+${badgeLv.pct}%)`],
-        ['消去ライン', `${this.selfBoard ? this.selfBoard.lines : 0}`],
-        ['スコア', `${(this.selfBoard ? this.selfBoard.score : 0).toLocaleString()}`],
-        ['生存時間', `${Math.floor(this.elapsedSec)}秒`],
-        ['最高順位', `#${profile.records.bestBr99Rank}`],
-        ['テト1回数', `${profile.records.br99Wins || 0}回`]
-      ];
-      document.getElementById('resStatsGrid').innerHTML = statItems.map(([k, v]) =>
-        `<div class="res-stat-cell"><div class="res-stat-k">${k}</div><div class="res-stat-v">${v}</div></div>`
-      ).join('');
-      document.getElementById('resStatsSummary').textContent = `TETRIS 99 (${this.isOnline ? 'ONLINE' : 'SOLO'})`;
+      document.getElementById('resStatsGrid').innerHTML = [
+        ['順位', `#${placement}/99`],
+        ['K.O.', `${this.koCount}`],
+        ['バッジ', `${this.badges}`],
+        ['生存時間', `${this.elapsed.toFixed(1)}s`]
+      ].map(([k, v]) => `<div class="res-stat-cell"><div class="res-stat-k">${k}</div><div class="res-stat-v">${v}</div></div>`).join('');
+      document.getElementById('resStatsSummary').textContent = `SCORE: ${(this.selfBoard ? this.selfBoard.score : 0).toLocaleString()}`;
+      document.getElementById('btnPlayReplay').style.display = 'none';
+      document.getElementById('btnSaveReplay').style.display = 'none';
       document.getElementById('resRematchStatus').textContent = '';
       document.getElementById('btnRematch').disabled = false;
       document.getElementById('overlayResult').classList.add('active');
+      sound.playSE(isWin ? 'rankUp' : 'lose');
     },
 
-    hostApplyClientState(slot, msg) {
-      const p = this.players[slot];
-      if (!p || !p.alive) return;
-      if (Array.isArray(msg.heights) && msg.heights.length === 10) p.heights = msg.heights;
-      p.danger = !!msg.danger;
-      p.tactic = msg.tactic || p.tactic;
-      if (typeof msg.target === 'number') p.target = msg.target;
+    showCallout(msg) {
+      const el = document.getElementById('br99Callout');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.add('show');
+      clearTimeout(this.calloutTimer);
+      this.calloutTimer = setTimeout(() => el.classList.remove('show'), 1600);
     },
 
-    clientApplyWorldSync(msg) {
-      if (!Array.isArray(msg.slots)) return;
-      for (const s of msg.slots) {
-        const p = this.players[s.i];
-        if (!p || s.i === this.mySlot) continue;
-        p.alive = !!s.a;
-        if (Array.isArray(s.h)) p.heights = s.h;
-        p.danger = !!s.d;
-        p.badgeBits = s.b || 0;
-        p.target = typeof s.t === 'number' ? s.t : -1;
-      }
-      this.checkPhaseAndVictory();
+    togglePause() {
+      if (this.isOnline) return;
+      this.paused = !this.paused;
+      document.getElementById('overlayPause').classList.toggle('active', this.paused);
     },
 
-    stepCpuSimulation(dt) {
-      const rf = typeof this.rateFactor === 'number' ? this.rateFactor : 0.36;
-      const phaseMult = this.phase === 2 ? 1.75 : (this.phase === 1 ? 1.30 : 1.0);
-      // Lower rating -> slower CPU cadence; higher rating (1700-2000+) -> faster cadence
-      const ratingSpeedMult = 0.68 + rf * 0.68; // 0.68x at R1100 -> ~0.92x at R1500 -> ~1.36x at R2200
-      const speedMult = phaseMult * ratingSpeedMult;
-
-      for (const p of this.players) {
-        if (!p.alive || p.isHuman || p.slot === this.mySlot) continue;
-        p.simTimer -= dt * speedMult;
-        if (p.simTimer > 0) continue;
-        p.simTimer = (0.58 + Math.random() * 0.95) / (0.62 + p.skill * 0.58);
-
-        // Retarget occasionally with hate dispersion
-        if (p.target < 0 || !this.players[p.target]?.alive || Math.random() < 0.16) {
-          p.target = this.pickTargetFor(p.slot, p.tactic);
-        }
-
-        // Stack / clear simulation scaled by CPU skill & room rating
-        const col = Math.floor(Math.random() * 10);
-        const maxH = Math.max(...p.heights);
-        const minH = Math.min(...p.heights);
-        const clearProb = 0.28 + p.skill * 0.38;
-        if (Math.random() < clearProb && maxH >= 3) {
-          const tetrisChance = 0.10 + p.skill * 0.20;
-          const cleared = Math.random() < tetrisChance ? 4 : (Math.random() < 0.42 ? 2 : 1);
-          for (let c = 0; c < 10; c++) p.heights[c] = Math.max(0, p.heights[c] - cleared);
-
-          // Attack probability scales with rating & skill so low-rate rooms aren't spammed
-          const atkEmitChance = 0.45 + rf * 0.45;
-          if (cleared >= 2 && Math.random() < atkEmitChance) {
-            const baseAtk = cleared === 4 ? (rf >= 0.55 ? 4 : 3) : 1;
-            const bInfo = calcBr99BadgeLevel(p.badgeBits);
-            const atk = Math.min(8, Math.max(1, Math.round(baseAtk * bInfo.mult)));
-            this.hostHandleAttack(p.slot, atk, p.tactic, p.target);
-          }
-        } else {
-          // Lower-skill / lower-rating CPUs stack slightly less cleanly (easier to KO)
-          const misdropRisk = Math.max(0.18, 0.58 - p.skill * 0.36);
-          const add = (minH < 6 && Math.random() < 0.55) ? 1 : (Math.random() < misdropRisk ? 2 : 1);
-          p.heights[col] = Math.min(20, p.heights[col] + add);
-        }
-
-        const newMax = Math.max(...p.heights);
-        p.danger = newMax >= 15;
-        if (newMax >= 20) {
-          this.hostHandleSlotKO(p.slot, p.lastAttacker);
-        }
-      }
-    },
-
-    update(dt) {
-      if (!this.isOpen) return;
-
-      if (this.calloutTimer > 0) {
-        this.calloutTimer -= dt;
-        if (this.calloutTimer <= 0) {
-          document.getElementById('br99Callout').classList.remove('show');
-        }
-      }
-
-      // Countdown before active play
-      if (!this.active && !this.ended && this.countdownVal > 0) {
-        this.countdownTimer -= dt;
-        if (this.countdownTimer <= 0) {
-          this.countdownVal--;
-          if (this.countdownVal > 0) {
-            this.countdownTimer = 0.85;
-            this.showCallout(`👑 TETRIS 99 — ${this.countdownVal}`, 0.8);
-            sound.playSE('countdown');
-          } else {
-            this.active = true;
-            this.showCallout('🔥 GO! 99人サバイバル開始!', 1.4);
-            sound.playSE('go');
-            sound.setBgmTrack('tetris');
-            sound.startBGM();
-          }
-        }
-        this.render();
-        return;
-      }
-
-      if (!this.active || this.paused || this.ended) {
-        this.render();
-        return;
-      }
-
-      this.elapsedSec += dt;
-      if (this.selfShake.time > 0) {
-        this.selfShake.time = Math.max(0, this.selfShake.time - dt);
-        if (this.selfShake.time <= 0) this.selfShake.mag = 0;
-      }
-
-      // Self Tetris board update
-      input.update(dt);
-      const softDown = input.isActionDown('down');
-      if (this.selfBoard) {
-        if (this.phase === 1) this.selfBoard.level = Math.max(this.selfBoard.level, 7);
-        if (this.phase === 2) this.selfBoard.level = Math.max(this.selfBoard.level, 12);
-        this.selfBoard.update(dt, softDown);
-      }
-
-      // Update self record in players array
-      const me = this.players[this.mySlot];
-      if (me && me.alive) {
-        me.heights = this.computeSelfHeights();
-        me.danger = Math.max(...me.heights) >= 15;
-        if (this.currentTarget < 0 || !this.players[this.currentTarget]?.alive) {
-          this.currentTarget = this.pickTargetFor(this.mySlot, this.tactic);
-        }
-        me.target = this.currentTarget;
-      }
-
-      // Host or Solo runs CPU simulation
-      if (!this.isOnline || this.isHost || this.isLocalSimFallback) {
-        this.stepCpuSimulation(dt);
-      }
-
-      // Lightweight 0.25s network sync
-      this.syncAccum += dt;
-      if (this.syncAccum >= 0.25) {
-        this.syncAccum = 0;
-        if (this.isOnline && !this.isLocalSimFallback) {
-          if (this.isHost) {
-            const compact = this.players.map(p => ({
-              i: p.slot, a: p.alive ? 1 : 0, h: p.heights, d: p.danger ? 1 : 0, b: p.badgeBits, t: p.target
-            }));
-            br99Net.broadcastToClients({ type: 'br99WorldSync', slots: compact });
-          } else if (me) {
-            br99Net.sendToHost({
-              type: 'br99State',
-              heights: me.heights,
-              danger: me.danger,
-              tactic: this.tactic,
-              target: this.currentTarget
-            });
-          }
-        }
-        this.updateHUD();
-      }
-
-      this.render();
+    exitToLobby() {
+      this.isOpen = false;
+      this.active = false;
+      this.paused = false;
+      this.ended = true;
+      this.leaveOnlineLobby(false);
     },
 
     updateHUD() {
       const alive = this.getAlivePlayers();
-      const aliveCount = alive.length;
-      const humanAlive = alive.filter(p => p.isHuman).length;
-      const badgeInfo = calcBr99BadgeLevel(this.badgeBits);
-      const attackers = this.getAttackersOf(this.mySlot);
-
-      document.getElementById('br99AliveBadge').textContent = `残り: ${aliveCount} / 99`;
-      document.getElementById('br99HumanBadge').textContent = `👤 実プレイヤー: ${humanAlive}人`;
+      const humansAlive = alive.filter(p => p.isHuman).length;
+      document.getElementById('br99AliveBadge').textContent = `残り: ${alive.length} / 99`;
+      document.getElementById('br99HumanBadge').textContent = `👤 実プレイヤー: ${humansAlive}人`;
       document.getElementById('br99KoBadge').textContent = `💥 K.O.: ${this.koCount}`;
-      document.getElementById('br99BadgePill').textContent = `🏅 Lv.${badgeInfo.lv} (+${badgeInfo.pct}%)`;
-      const phaseEl = document.getElementById('br99PhaseBadge');
-      if (this.phase === 2) { phaseEl.textContent = '🔥 TOP 10'; phaseEl.classList.add('danger'); }
-      else if (this.phase === 1) { phaseEl.textContent = '⚡ TOP 50'; phaseEl.classList.remove('danger'); }
-      else { phaseEl.textContent = 'SPEED: 1x'; phaseEl.classList.remove('danger'); }
-
-      document.getElementById('br99CounterBtn').textContent = `4: カウンター (${attackers.length})`;
+      const lvl = getBr99BadgeLevel(this.badges);
+      const pct = Math.round((BR99_BADGE_BONUSES[lvl] || 0) * 100);
+      document.getElementById('br99BadgePill').textContent = `🏅 Lv.${lvl} (+${pct}%) バッジ:${this.badges}`;
+      const pEl = document.getElementById('br99PhaseBadge');
+      pEl.textContent = this.speedTier === 3 ? 'SPEED: 3x (TOP10)' : (this.speedTier === 2 ? 'SPEED: 2x (TOP50)' : 'SPEED: 1x');
+      pEl.classList.toggle('danger', this.speedTier >= 2);
+      const cBtn = document.getElementById('br99CounterBtn');
+      if (cBtn) cBtn.textContent = `4: カウンター (${this.counterAttackers.length})`;
     },
 
-    renderMiniGrid(canvas, slotSlice) {
-      const ctx = canvas.getContext('2d');
-      const W = canvas.width, H = canvas.height;
-      ctx.clearRect(0, 0, W, H);
-      const t = activeThemeObj || THEMES.neon;
-      const cols = 7, rows = 7;
-      const pad = 4;
-      const cw = (W - pad * (cols + 1)) / cols;
-      const ch = (H - pad * (rows + 1)) / rows;
-
-      const attackersSet = new Set(this.getAttackersOf(this.mySlot).map(a => a.slot));
-      const myTargets = new Set();
-      if (this.tactic === 'attackers' && attackersSet.size > 0) {
-        attackersSet.forEach(sl => myTargets.add(sl));
-      } else if (this.currentTarget >= 0) {
-        myTargets.add(this.currentTarget);
+    update(dt) {
+      if (!this.isOpen || !this.active || this.paused || this.ended) return;
+      this.elapsed += dt;
+      if (this.selfShake.time > 0) {
+        this.selfShake.time = Math.max(0, this.selfShake.time - dt);
+        if (this.selfShake.time === 0) this.selfShake.mag = 0;
       }
 
-      for (let i = 0; i < slotSlice.length; i++) {
-        const slot = slotSlice[i];
-        const p = this.players[slot];
-        if (!p) continue;
-        const gc = i % cols;
-        const gr = Math.floor(i / cols);
-        const x = pad + gc * (cw + pad);
-        const y = pad + gr * (ch + pad);
+      const speedMult = this.speedTier === 3 ? 1.55 : (this.speedTier === 2 ? 1.25 : 1.0);
+      input.update(dt);
+      if (this.self && this.self.alive && this.selfBoard) {
+        const softHeld = input.isActionDown('down');
+        this.selfBoard.update(dt * speedMult, softHeld);
+        document.getElementById('br99SelfZone').classList.toggle('danger', this.selfBoard.isInDanger());
+      }
 
-        // Background cell
-        ctx.fillStyle = p.alive ? (t.fieldBg || '#070c1b') : 'rgba(15, 23, 42, 0.35)';
-        ctx.fillRect(x, y, cw, ch);
-
-        if (p.alive) {
-          // Draw 10-column mini stack
-          const barW = (cw - 2) / 10;
-          for (let c = 0; c < 10; c++) {
-            const hVal = p.heights[c] || 0;
-            if (hVal <= 0) continue;
-            const bh = (hVal / 20) * (ch - 4);
-            ctx.fillStyle = p.danger ? '#f87171' : (p.isHuman ? '#38bdf8' : '#94a3b8');
-            ctx.fillRect(x + 1 + c * barW, y + ch - 2 - bh, Math.max(1, barW - 0.5), bh);
+      // Update CPU players
+      for (const p of this.players) {
+        if (p.isHuman || !p.alive || !p.board || !p.cpu) continue;
+        p.aiTimer += dt * speedMult;
+        if (p.aiTimer >= p.aiInterval) {
+          p.aiTimer = 0;
+          if (!p.board.dead && p.board.current) {
+            const plan = p.cpu.planTetris(p.board);
+            if (plan) {
+              p.board.current.rot = plan.rot;
+              p.board.current.x = Math.max(-2, Math.min(p.board.cols - 1, plan.x));
+              p.board.hardDrop();
+              if (Math.random() < 0.24) {
+                const lines = 1 + Math.floor(Math.random() * 4);
+                const tgt = (p.targetId !== null && this.players[p.targetId] && this.players[p.targetId].alive)
+                  ? this.players[p.targetId]
+                  : null;
+                if (tgt) {
+                  if (tgt.isSelf && this.self && this.self.alive) {
+                    this.selfBoard.receiveGarbage(lines);
+                    if (!this.counterAttackers.includes(p.id)) this.counterAttackers.push(p.id);
+                  } else if (!tgt.isHuman) {
+                    tgt.board.receiveGarbage(lines);
+                    if (this.estimateBoardDanger(tgt.board) >= 0.92 || tgt.board.pendingGarbage >= 12) {
+                      this.eliminatePlayer(tgt, p.id, false);
+                    }
+                  }
+                }
+              }
+            }
           }
-
-          // Badge dot indicator
-          if (p.badgeBits >= 2) {
-            ctx.fillStyle = '#fbbf24';
-            ctx.fillRect(x + cw - 7, y + 2, 5, 5);
-          }
-
-          // Human label
-          if (p.isHuman) {
-            ctx.fillStyle = 'rgba(0, 240, 255, 0.88)';
-            ctx.font = 'bold 8px sans-serif';
-            ctx.textAlign = 'left';
-            ctx.fillText(p.name.slice(0, 6), x + 2, y + 9);
-          }
-        } else {
-          // K.O. X mark
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.45)';
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(x + 6, y + 6); ctx.lineTo(x + cw - 6, y + ch - 6);
-          ctx.moveTo(x + cw - 6, y + 6); ctx.lineTo(x + 6, y + ch - 6);
-          ctx.stroke();
         }
+        p.board.update(dt * 0.45, false);
+      }
 
-        // Border highlight: Yellow = my target, Red = targeting me, Cyan = human
-        if (p.alive && myTargets.has(slot)) {
-          ctx.strokeStyle = '#fde047';
-          ctx.lineWidth = 2.5;
-          ctx.strokeRect(x, y, cw, ch);
-        } else if (p.alive && attackersSet.has(slot)) {
-          ctx.strokeStyle = '#ef4444';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(x, y, cw, ch);
-        } else if (p.alive && p.isHuman) {
-          ctx.strokeStyle = '#00f0ff';
-          ctx.lineWidth = 1.6;
-          ctx.strokeRect(x, y, cw, ch);
-        } else {
-          ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
-          ctx.lineWidth = 1;
-          ctx.strokeRect(x, y, cw, ch);
+      if (this.isOnline) {
+        this.onlineSyncAccum += dt;
+        if (this.onlineSyncAccum >= 0.25) {
+          this.onlineSyncAccum = 0;
+          const payload = {
+            type: 'br99State',
+            peerId: this.peer ? this.peer.id : 'self',
+            koCount: this.koCount,
+            badges: this.badges,
+            grid: this.selfBoard ? this.selfBoard.grid : null
+          };
+          for (const c of this.onlinePeers.values()) {
+            if (c.open) { try { c.send(payload); } catch (e) {} }
+          }
         }
       }
-    },
 
-    drawTargetLasersOnFX(fxCtx) {
-      if (!this.isOpen || !this.active || this.ended) return;
-      const selfPos = this.getSlotScreenPos(this.mySlot);
-      if (!selfPos) return;
-
-      // Red incoming laser lines from opponents targeting me
-      const attackers = this.getAttackersOf(this.mySlot);
-      fxCtx.save();
-      for (const a of attackers) {
-        const pos = this.getSlotScreenPos(a.slot);
-        if (!pos) continue;
-        fxCtx.strokeStyle = 'rgba(239, 68, 68, 0.65)';
-        fxCtx.lineWidth = 2;
-        fxCtx.setLineDash([6, 5]);
-        fxCtx.beginPath();
-        fxCtx.moveTo(pos.x, pos.y);
-        fxCtx.lineTo(selfPos.x, selfPos.y);
-        fxCtx.stroke();
-      }
-
-      // Yellow outgoing lock-on line to my current target
-      if (this.currentTarget >= 0 && this.players[this.currentTarget]?.alive) {
-        const tPos = this.getSlotScreenPos(this.currentTarget);
-        if (tPos) {
-          fxCtx.strokeStyle = 'rgba(253, 224, 71, 0.72)';
-          fxCtx.lineWidth = 2.2;
-          fxCtx.setLineDash([4, 4]);
-          fxCtx.beginPath();
-          fxCtx.moveTo(selfPos.x, selfPos.y);
-          fxCtx.lineTo(tPos.x, tPos.y);
-          fxCtx.stroke();
-        }
-      }
-      fxCtx.restore();
+      this.updateHUD();
+      this.render();
     },
 
     render() {
-      if (!this.isOpen) return;
-      const selfCanvas = document.getElementById('br99SelfCanvas');
-      if (selfCanvas && this.selfBoard) {
-        renderPlayerCanvas(selfCanvas, 'tetris', this.selfBoard, null, false, true, this.selfShake);
+      if (!this.selfCanvas || !this.selfBoard) return;
+      renderPlayerCanvas(this.selfCanvas, 'tetris', this.selfBoard, null, false, true, this.selfShake);
+      this.renderMiniGrid(this.leftCanvas, 0, 50, 'LEFT 50');
+      this.renderMiniGrid(this.rightCanvas, 50, 99, 'RIGHT 49');
+    },
+
+    renderMiniGrid(canvas, startIdx, endIdx, label) {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = activeThemeObj.canvasBg || '#060a16';
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = activeThemeObj.textDim || '#94a3b8';
+      ctx.font = '800 11px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, 8, 14);
+
+      const slice = this.players.slice(startIdx, endIdx);
+      const cols = 7;
+      const rows = Math.ceil(slice.length / cols);
+      const padX = 6, padTop = 20, gap = 4;
+      const cellW = Math.max(24, (W - padX * 2 - gap * (cols - 1)) / cols);
+      const cellH = Math.max(36, (H - padTop - 6 - gap * (rows - 1)) / rows);
+
+      slice.forEach((p, idx) => {
+        const cIdx = idx % cols;
+        const rIdx = Math.floor(idx / cols);
+        const x = padX + cIdx * (cellW + gap);
+        const y = padTop + rIdx * (cellH + gap);
+
+        ctx.fillStyle = activeThemeObj.fieldBg || '#0b1224';
+        ctx.fillRect(x, y, cellW, cellH);
+
+        if (!p.alive) {
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+          ctx.fillRect(x, y, cellW, cellH);
+          ctx.strokeStyle = 'rgba(148,163,184,0.22)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x, y, cellW, cellH);
+          return;
+        }
+
+        // Mini stack blocks
+        const miniCell = Math.max(2, Math.floor(Math.min((cellW - 4) / 10, (cellH - 4) / 20)));
+        const gx = x + (cellW - miniCell * 10) / 2;
+        const gy = y + (cellH - miniCell * 20) / 2;
+        if (p.board && p.board.grid) {
+          for (let r = 2; r < 22; r++) {
+            for (let c = 0; c < 10; c++) {
+              const t = p.board.grid[r][c];
+              if (t) {
+                ctx.fillStyle = TETRIS_COLORS[t] || '#38bdf8';
+                ctx.fillRect(gx + c * miniCell, gy + (r - 2) * miniCell, miniCell - 0.5, miniCell - 0.5);
+              }
+            }
+          }
+        }
+
+        const isTargetedByMe = this.self && this.self.targetId === p.id;
+        const isTargetingMe = this.self && p.targetId === this.self.id;
+        ctx.strokeStyle = isTargetedByMe ? '#fde047' : (isTargetingMe ? '#ff2e93' : 'rgba(56,189,248,0.35)');
+        ctx.lineWidth = (isTargetedByMe || isTargetingMe) ? 2 : 1;
+        ctx.strokeRect(x, y, cellW, cellH);
+      });
+    },
+
+    drawTargetLasersOnFX(ctx) {
+      if (!this.active || !this.self || !this.self.alive || !this.selfCanvas) return;
+      const sr = this.selfCanvas.getBoundingClientRect();
+      if (!sr.width) return;
+      const sx = sr.left + sr.width * 0.5;
+      const sy = sr.top + sr.height * 0.5;
+
+      const drawBeamTo = (targetPlayer, color) => {
+        if (!targetPlayer || !targetPlayer.alive) return;
+        const isLeft = targetPlayer.id < 50;
+        const canvas = isLeft ? this.leftCanvas : this.rightCanvas;
+        if (!canvas) return;
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width) return;
+        const localIdx = isLeft ? targetPlayer.id : (targetPlayer.id - 50);
+        const cols = 7;
+        const rows = Math.ceil((isLeft ? 50 : 49) / cols);
+        const padX = 6, padTop = 20, gap = 4;
+        const cellW = Math.max(24, (rect.width - padX * 2 - gap * (cols - 1)) / cols);
+        const cellH = Math.max(36, (rect.height - padTop - 6 - gap * (rows - 1)) / rows);
+        const tx = rect.left + padX + (localIdx % cols) * (cellW + gap) + cellW * 0.5;
+        const ty = rect.top + padTop + Math.floor(localIdx / cols) * (cellH + gap) + cellH * 0.5;
+
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = 0.45;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke();
+        ctx.restore();
+      };
+
+      if (this.self.targetId !== null) drawBeamTo(this.players[this.self.targetId], '#fde047');
+      for (const attId of this.counterAttackers) {
+        drawBeamTo(this.players[attId], '#ff2e93');
       }
-      const leftC = document.getElementById('br99LeftCanvas');
-      const rightC = document.getElementById('br99RightCanvas');
-      if (leftC) this.renderMiniGrid(leftC, this.otherSlots.slice(0, 49));
-      if (rightC) this.renderMiniGrid(rightC, this.otherSlots.slice(49, 98));
     }
   };
 
-  // Wire TETRIS 99 Lobby & Battle Controls
-  document.getElementById('btnBr99SoloStart').addEventListener('click', () => {
-    sound.unlock();
-    br99.startSolo();
-  });
-  document.getElementById('btnBr99AutoMatch').addEventListener('click', () => {
-    sound.unlock();
-    br99Net.startAutoMatch();
-  });
-  document.getElementById('btnBr99CreateRoom').addEventListener('click', () => {
-    sound.unlock();
-    br99Net.createFriendRoom();
-  });
-  document.getElementById('btnBr99JoinRoom').addEventListener('click', () => {
-    sound.unlock();
-    br99Net.joinFriendRoom(document.getElementById('inputBr99RoomId').value);
-  });
-  document.getElementById('btnBr99Ready').addEventListener('click', () => {
-    sound.unlock();
-    br99Net.toggleReady();
-  });
-  document.getElementById('btnBr99Leave').addEventListener('click', () => {
-    br99Net.cleanup();
-  });
-  document.getElementById('btnBr99CopyCode').addEventListener('click', () => {
-    copyToClipboard(document.getElementById('br99RoomCodeDisplay').textContent);
-  });
-  document.getElementById('btnBr99CopyUrl').addEventListener('click', () => {
-    const code = document.getElementById('br99RoomCodeDisplay').textContent.trim();
-    if (!code || code === 'BR-0000') return;
-    const url = location.href.split('?')[0] + '?br99=' + encodeURIComponent(code);
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(() => showToast('フレンド99招待リンクをコピーしました！')).catch(() => copyToClipboard(url));
-    } else {
-      copyToClipboard(url);
-    }
-  });
-  document.getElementById('btnBr99Retry').addEventListener('click', () => {
-    if (!br99.isOnline) { sound.unlock(); br99.startSolo(); }
-  });
-  document.getElementById('btnBr99Pause').addEventListener('click', () => {
-    if (!br99.isOnline) { sound.unlock(); br99.togglePause(); }
-  });
-  document.getElementById('btnBr99Exit').addEventListener('click', () => {
-    br99.exitToLobby();
-  });
-  document.querySelectorAll('#br99TacticBar .br99-tactic-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      sound.unlock();
-      br99.setTactic(btn.dataset.tactic);
-    });
-  });
-  document.querySelectorAll('#br99TouchPad .touch-btn').forEach(btn => {
-    const act = btn.dataset.act;
-    const release = () => {
-      btn.classList.remove('pressed');
-      if (!input.touchHeld.has(act)) return;
-      input.touchHeld.delete(act);
-      if (act === 'left' && input.horizDir === -1) {
-        input.horizDir = input.isActionDown('right') ? 1 : 0; input.dasTimer = 0; input.arrTimer = 0;
-      } else if (act === 'right' && input.horizDir === 1) {
-        input.horizDir = input.isActionDown('left') ? -1 : 0; input.dasTimer = 0; input.arrTimer = 0;
-      }
-    };
-    btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      sound.unlock();
-      if (!br99.active || br99.paused || br99.ended) return;
-      btn.classList.add('pressed');
-      if (act === 'left' || act === 'right' || act === 'down') {
-        input.touchHeld.add(act);
-        if (act === 'left' || act === 'right') input.triggerActionPress(act);
-      } else {
-        input.triggerActionPress(act);
-      }
-    });
-    btn.addEventListener('pointerup', release);
-    btn.addEventListener('pointercancel', release);
-    btn.addEventListener('pointerleave', release);
-  });
-
-  function loop(now) {
-    const dt = Math.min(0.05, (now - lastTime) / 1000);
-    lastTime = now;
-    input.pollGamepad();
-    if (battle.active) {
-      battle.update(dt);
-    } else if (document.getElementById('screenBattle').classList.contains('active')) {
-      battle.render();
-    }
-    if (br99.isOpen) br99.update(dt);
-    if (puyoEditor.active) puyoEditor.update(dt);
-    if (replayPlayer.open) replayPlayer.update(dt);
-    updateAndDrawFX(dt);
-    requestAnimationFrame(loop);
-  }
-
-
   /* =========================================================================
-     13. FIREBASE AUTH MODAL WIRING & STATE LISTENER
+     15. INITIALIZATION & QUERY-PARAM AUTO-JOIN (?room= / ?br99=)
      ========================================================================= */
-  let authMode = 'login'; // 'login' | 'register'
+  initStampBars();
+  puyoEditor.init();
+  br99.initUI();
+  renderProfileUI();
 
+  // Account & Cloud Sync UI wiring
+  let authModeTab = 'login';
   function renderAuthModalUI() {
     const unconf = document.getElementById('authUnconfiguredBanner');
     const outView = document.getElementById('authLoggedOutView');
     const inView = document.getElementById('authLoggedInView');
     const errEl = document.getElementById('authErrorMsg');
     if (errEl) errEl.textContent = '';
-    if (unconf) unconf.style.display = fbReady ? 'none' : 'block';
+
+    if (!fbReady) {
+      if (unconf) unconf.style.display = 'block';
+      if (outView) outView.style.display = 'block';
+      if (inView) inView.style.display = 'none';
+      setCloudBadgeState(null);
+      return;
+    }
+    if (unconf) unconf.style.display = 'none';
 
     if (fbUser) {
-      outView.style.display = 'none';
-      inView.style.display = 'block';
-      document.getElementById('authSignedName').textContent = `${profile.name} (${getAuthAccountDisplayName(fbUser)})`;
-      const isVirtualId = !!(fbUser.email && fbUser.email.endsWith('@puyotet.local'));
-      document.getElementById('authSignedMethod').textContent = `ログイン方式: ${isVirtualId ? 'ID＋パスワード' : 'Googleアカウント'}`;
-      document.getElementById('authSignedUid').textContent = `UID: ${fbUser.uid.slice(0, 10)}...`;
+      if (outView) outView.style.display = 'none';
+      if (inView) inView.style.display = 'block';
+      document.getElementById('authSignedName').textContent = `${profile.name}（${getAuthAccountDisplayName(fbUser)}）`;
+      const isIdPass = !!(fbUser.email && fbUser.email.endsWith('@puyotet.local'));
+      document.getElementById('authSignedMethod').textContent =
+        isIdPass ? 'ログイン方式: ID＋パスワード' : 'ログイン方式: Googleアカウント';
+      document.getElementById('authSignedUid').textContent = `UID: ${fbUser.uid}`;
+      setCloudBadgeState('synced');
     } else {
-      outView.style.display = 'block';
-      inView.style.display = 'none';
-      document.getElementById('authTabLogin').classList.toggle('active', authMode === 'login');
-      document.getElementById('authTabRegister').classList.toggle('active', authMode === 'register');
-      document.getElementById('authFormHeading').textContent = authMode === 'login'
-        ? 'ID＋パスワードでログイン（メール不要）'
-        : 'ID＋パスワードで新規登録（メール不要・戦績引き継ぎ）';
-      document.getElementById('btnAuthSubmit').textContent = authMode === 'login'
-        ? '🔑 ログインする'
-        : '✨ このIDで新規登録する';
+      if (outView) outView.style.display = 'block';
+      if (inView) inView.style.display = 'none';
+      document.getElementById('authTabLogin').classList.toggle('active', authModeTab === 'login');
+      document.getElementById('authTabRegister').classList.toggle('active', authModeTab === 'register');
+      document.getElementById('authFormHeading').textContent = authModeTab === 'register'
+        ? '新規アカウント作成（メール不要・ゲスト戦績引継）'
+        : 'ID＋パスワードでログイン（メール不要）';
+      document.getElementById('btnAuthSubmit').textContent = authModeTab === 'register'
+        ? '✨ 新規登録してクラウド保存を開始'
+        : '🔑 ログインする';
+      setCloudBadgeState(null);
     }
-    setCloudBadgeState(fbUser ? 'synced' : 'guest');
   }
 
   function openAuthModal() {
@@ -10567,9 +9979,10 @@ body.theme-light .lb-summary { color: var(--text-main); }
   document.getElementById('btnCloseAuth').addEventListener('click', () => {
     document.getElementById('overlayAuth').classList.remove('active');
   });
+
   document.querySelectorAll('[data-authtab]').forEach(tab => {
     tab.addEventListener('click', () => {
-      authMode = tab.dataset.authtab;
+      authModeTab = tab.dataset.authtab;
       renderAuthModalUI();
     });
   });
@@ -10578,34 +9991,41 @@ body.theme-light .lb-summary { color: var(--text-main); }
     const errEl = document.getElementById('authErrorMsg');
     errEl.textContent = '';
     if (!fbReady || !fbAuth) {
-      errEl.textContent = 'Firebase設定（FIREBASE_CONFIG）が未設定のためログインできません。';
+      errEl.textContent = 'Firebase未設定のためゲストモードのみ利用可能です。';
       return;
     }
-    const rawId = document.getElementById('authUserId').value.trim();
-    const pw = document.getElementById('authPassword').value;
-    if (!/^[a-zA-Z0-9_]{3,20}$/.test(rawId)) {
-      errEl.textContent = 'ユーザーIDは半角英数字・アンダーバーで3〜20文字にしてください。';
+    const rawId = (document.getElementById('authUserId').value || '').trim().toLowerCase();
+    const pw = document.getElementById('authPassword').value || '';
+    if (!/^[a-z0-9_]{3,20}$/.test(rawId)) {
+      errEl.textContent = 'ユーザーIDは半角英数字とアンダースコア（_）3〜20文字で入力してください。';
       return;
     }
-    if (!pw || pw.length < 6) {
-      errEl.textContent = 'パスワードは6文字以上にしてください。';
+    if (pw.length < 6) {
+      errEl.textContent = 'パスワードは6文字以上で入力してください。';
       return;
     }
-    const virtualEmail = rawId.toLowerCase() + '@puyotet.local';
+    const virtualEmail = `${rawId}@puyotet.local`;
     const btn = document.getElementById('btnAuthSubmit');
     btn.disabled = true;
     try {
-      if (authMode === 'register') {
-        await fbAuth.createUserWithEmailAndPassword(virtualEmail, pw);
-        showToast('✨ アカウントを作成しました！');
+      let cred;
+      if (authModeTab === 'register') {
+        cred = await fbAuth.createUserWithEmailAndPassword(virtualEmail, pw);
+        if (cred.user && !cred.user.displayName) {
+          await cred.user.updateProfile({ displayName: rawId }).catch(() => {});
+        }
       } else {
-        await fbAuth.signInWithEmailAndPassword(virtualEmail, pw);
-        showToast('🔑 ログインしました！');
+        cred = await fbAuth.signInWithEmailAndPassword(virtualEmail, pw);
+      }
+      if (cred && cred.user) {
+        fbUser = cred.user;
+        await loadOrMigrateCloudProfile(cred.user);
       }
       document.getElementById('authPassword').value = '';
       document.getElementById('overlayAuth').classList.remove('active');
-    } catch (err) {
-      errEl.textContent = formatFirebaseAuthError(err);
+      renderAuthModalUI();
+    } catch (e) {
+      errEl.textContent = formatFirebaseAuthError(e);
     } finally {
       btn.disabled = false;
     }
@@ -10615,79 +10035,92 @@ body.theme-light .lb-summary { color: var(--text-main); }
     const errEl = document.getElementById('authErrorMsg');
     errEl.textContent = '';
     if (!fbReady || !fbAuth) {
-      errEl.textContent = 'Firebase設定（FIREBASE_CONFIG）が未設定のためログインできません。';
+      errEl.textContent = 'Firebase未設定のためGoogleログインは利用できません。';
       return;
     }
     const btn = document.getElementById('btnAuthGoogle');
     btn.disabled = true;
     try {
       const provider = new firebase.auth.GoogleAuthProvider();
-      await fbAuth.signInWithPopup(provider);
-      showToast('🔑 Googleアカウントでログインしました！');
+      const cred = await fbAuth.signInWithPopup(provider);
+      if (cred && cred.user) {
+        fbUser = cred.user;
+        await loadOrMigrateCloudProfile(cred.user);
+      }
       document.getElementById('overlayAuth').classList.remove('active');
-    } catch (err) {
-      errEl.textContent = formatFirebaseAuthError(err);
+      renderAuthModalUI();
+    } catch (e) {
+      errEl.textContent = formatFirebaseAuthError(e);
     } finally {
       btn.disabled = false;
     }
   });
 
   document.getElementById('btnAuthSyncNow').addEventListener('click', async () => {
-    sound.unlock();
+    const btn = document.getElementById('btnAuthSyncNow');
+    btn.disabled = true;
     await syncCloudNow(true, true);
+    btn.disabled = false;
   });
 
   document.getElementById('btnAuthLogout').addEventListener('click', async () => {
     if (!fbReady || !fbAuth) return;
-    try {
-      await fbAuth.signOut();
-      fbUser = null;
-      renderAuthModalUI();
-      showToast('🚪 ログアウトしました（ゲストモード）');
-    } catch (e) {
-      showToast('ログアウトに失敗しました');
-    }
+    await syncCloudNow(true, false);
+    await fbAuth.signOut().catch(() => {});
+    fbUser = null;
+    setCloudBadgeState(null);
+    renderAuthModalUI();
+    showToast('ログアウトしました（ローカルデータは保持されています）');
   });
 
   if (fbReady && fbAuth) {
-    fbAuth.onAuthStateChanged((user) => {
+    fbAuth.onAuthStateChanged(async (user) => {
       fbUser = user || null;
-      renderAuthModalUI();
-      if (fbUser) {
-        loadOrMigrateCloudProfile(fbUser);
+      if (user) {
+        await loadOrMigrateCloudProfile(user);
+      } else {
+        setCloudBadgeState(null);
+      }
+      if (document.getElementById('overlayAuth').classList.contains('active')) {
+        renderAuthModalUI();
       }
     });
+    fetchCloudLeaderboard();
   }
 
-  window.addEventListener('load', () => {
-    initStampBars();
-    renderProfileUI();
-    updateBr99RecordBanner();
-    requestAnimationFrame(loop);
-    try {
-      const params = new URLSearchParams(location.search);
-      const br99Param = params.get('br99');
-      if (br99Param && br99Param.trim()) {
-        const bCode = br99Param.trim().toUpperCase();
-        document.querySelectorAll('.mode-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'br99'));
-        document.querySelectorAll('.mode-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-br99'));
-        const inpB = document.getElementById('inputBr99RoomId');
-        if (inpB) inpB.value = bCode;
-        try { history.replaceState(null, '', location.href.split('?')[0]); } catch (e) {}
-        setTimeout(() => br99Net.joinFriendRoom(bCode), 350);
-      }
-      const roomParam = params.get('room');
-      if (roomParam && roomParam.trim()) {
-        const code = roomParam.trim().toUpperCase();
-        document.querySelectorAll('.mode-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'room'));
-        document.querySelectorAll('.mode-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-room'));
-        const inp = document.getElementById('inputRoomId');
-        if (inp) inp.value = code;
-        try { history.replaceState(null, '', location.href.split('?')[0]); } catch (e) {}
-        setTimeout(() => net.joinRoom(code), 350);
-      }
-    } catch (e) {}
-  });
+  // Handle URL query params (?room=PT-XXXX or ?br99=BR-XXXX)
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const inviteRoom = params.get('room');
+    const inviteBr99 = params.get('br99');
+    if (inviteBr99) {
+      const code = inviteBr99.trim().toUpperCase();
+      document.querySelectorAll('.mode-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'br99'));
+      document.querySelectorAll('.mode-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-br99'));
+      document.getElementById('inputBr99RoomId').value = code;
+      setTimeout(() => { if (typeof br99 !== 'undefined') br99.openOnlineLobby('room', code); }, 250);
+    } else if (inviteRoom) {
+      const code = inviteRoom.trim().toUpperCase();
+      document.querySelectorAll('.mode-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'room'));
+      document.querySelectorAll('.mode-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-room'));
+      document.getElementById('inputRoomId').value = code;
+      setTimeout(() => net.joinRoom(code), 250);
+    }
+  } catch (e) {}
+
+  let lastTime = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    input.pollGamepad();
+    if (br99.isOpen) br99.update(dt);
+    else battle.update(dt);
+    replayPlayer.update(dt);
+    puyoEditor.update(dt);
+    updateAndDrawFX(dt);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 })();
 </script>
 </body>
