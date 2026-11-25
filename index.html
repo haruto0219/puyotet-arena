@@ -5291,6 +5291,108 @@ body.theme-light .lb-summary { color: var(--text-main); }
     return slots;
   }
 
+  function probePotentialChainDetailed(grid, maxTriggers = 2) {
+    let bestChain = 0;
+    let bestOjamas = 0;
+    let accessibleTrigger = false;
+    let triggerCol = -1;
+    const heights = new Int8Array(6);
+    for (let c = 0; c < 6; c++) {
+      let r = 12;
+      while (r >= 1 && grid[r][c] !== 0) r--;
+      heights[c] = r;
+    }
+    for (let c = 0; c < 6; c++) {
+      const r = heights[c];
+      if (r < 1) continue;
+      const adjColors = new Set();
+      if (r < 12 && grid[r + 1][c] >= 1 && grid[r + 1][c] <= 5) adjColors.add(grid[r + 1][c]);
+      if (c > 0 && grid[r][c - 1] >= 1 && grid[r][c - 1] <= 5) adjColors.add(grid[r][c - 1]);
+      if (c < 5 && grid[r][c + 1] >= 1 && grid[r][c + 1] <= 5) adjColors.add(grid[r][c + 1]);
+      for (const col of adjColors) {
+        const g1 = clonePuyoGrid(grid);
+        g1[r][c] = col;
+        const s1 = simPuyoSettleAndChain(g1);
+        if (s1.chain > bestChain || (s1.chain === bestChain && s1.totalOjamas > bestOjamas)) {
+          bestChain = s1.chain;
+          bestOjamas = s1.totalOjamas;
+          accessibleTrigger = (r >= 2);
+          triggerCol = c;
+        }
+        if (maxTriggers >= 2 && s1.chain === 0 && r >= 2) {
+          const g2 = clonePuyoGrid(grid);
+          g2[r][c] = col;
+          g2[r - 1][c] = col;
+          const s2 = simPuyoSettleAndChain(g2);
+          if (s2.chain > bestChain || (s2.chain === bestChain && s2.totalOjamas > bestOjamas)) {
+            bestChain = s2.chain;
+            bestOjamas = s2.totalOjamas;
+            accessibleTrigger = (r >= 3);
+            triggerCol = c;
+          }
+        }
+      }
+    }
+    return { maxChain: bestChain, maxOjamas: bestOjamas, accessibleTrigger, triggerCol };
+  }
+
+  function countTSpinSlotsDetailed(grid) {
+    let tsd = 0;
+    let tst = 0;
+    for (let r = 8; r < 21; r++) {
+      for (let c = 1; c < 9; c++) {
+        // Classic TSD pocket: 1-wide bottom hole with 3-wide open middle row and 1-sided overhang roof
+        if (!grid[r][c] && grid[r][c - 1] && grid[r][c + 1] &&
+            !grid[r - 1][c] && !grid[r - 1][c - 1] && !grid[r - 1][c + 1]) {
+          const roofL = r >= 2 && !!grid[r - 2][c - 1] && !grid[r - 2][c];
+          const roofR = r >= 2 && !!grid[r - 2][c + 1] && !grid[r - 2][c];
+          if (roofL !== roofR) tsd++;
+        }
+        // TST overhang notch check (vertical 2-cell cavity with side overhang)
+        if (r >= 4 && r <= 19 && !grid[r][c] && !grid[r - 1][c] && grid[r + 1][c]) {
+          const leftWall = grid[r][c - 1] && grid[r - 1][c - 1];
+          const rightWall = grid[r][c + 1] && grid[r - 1][c + 1];
+          if (leftWall && !rightWall && c + 2 < 10 && grid[r - 2][c + 1] && !grid[r - 2][c]) tst++;
+          else if (rightWall && !leftWall && c - 2 >= 0 && grid[r - 2][c - 1] && !grid[r - 2][c]) tst++;
+        }
+      }
+    }
+    return { tsd, tst, total: tsd + tst };
+  }
+
+  function getTetrisGridStats(grid) {
+    const rows = 22, cols = 10;
+    const heights = Array(cols).fill(0);
+    let holes = 0, coveredCells = 0, shallowestHoleCover = 0;
+    let shallowestHoleRow = 99;
+    for (let c = 0; c < cols; c++) {
+      let topRow = -1;
+      for (let r = 0; r < rows; r++) {
+        if (grid[r][c]) {
+          if (topRow === -1) {
+            topRow = r;
+            heights[c] = rows - r;
+          }
+        } else if (topRow !== -1) {
+          holes++;
+          const coverDepth = r - topRow;
+          coveredCells += coverDepth;
+          if (r < shallowestHoleRow) {
+            shallowestHoleRow = r;
+            shallowestHoleCover = coverDepth;
+          }
+        }
+      }
+    }
+    let aggH = 0, maxH = 0, bump = 0;
+    for (let c = 0; c < cols; c++) {
+      aggH += heights[c];
+      if (heights[c] > maxH) maxH = heights[c];
+      if (c < cols - 1) bump += Math.abs(heights[c] - heights[c + 1]);
+    }
+    return { heights, holes, coveredCells, shallowestHoleCover, aggH, maxH, bump };
+  }
+
   class CpuController {
     constructor(difficulty) {
       this.difficulty = difficulty;
@@ -5304,21 +5406,66 @@ body.theme-light .lb-summary { color: var(--text-main); }
       if (this.difficulty === 'easy') return 0.30;
       if (this.difficulty === 'normal') return 0.14;
       if (this.difficulty === 'hard') return 0.072;
-      return 0.032;
+      return 0.024;
     }
 
-    update(dt, activeStyle, tetris, puyo) {
+    buildOppContext(oppStyle, oppTetris, oppPuyo) {
+      const ctx = { oppDanger: false, oppHighStack: false, oppPendingGarbage: 0, oppStyle: oppStyle || null };
+      const ob = oppStyle === 'tetris' ? oppTetris : (oppStyle === 'puyo' ? oppPuyo : null);
+      if (!ob || ob.dead) return ctx;
+      ctx.oppPendingGarbage = ob.pendingGarbage || 0;
+      if (typeof ob.isInDanger === 'function' && ob.isInDanger()) ctx.oppDanger = true;
+      if (oppStyle === 'tetris' && ob.grid) {
+        for (let r = 0; r < 10; r++) {
+          for (let c = 0; c < 10; c++) {
+            if (ob.grid[r][c]) { ctx.oppHighStack = true; break; }
+          }
+          if (ctx.oppHighStack) break;
+        }
+      } else if (oppStyle === 'puyo' && ob.grid) {
+        let cnt = 0;
+        for (let r = 1; r < 13; r++) {
+          for (let c = 0; c < 6; c++) if (ob.grid[r][c] !== 0) cnt++;
+        }
+        let col2H = 0;
+        for (let r = 1; r < 13; r++) if (ob.grid[r][2] !== 0) { col2H = 13 - r; break; }
+        if (cnt >= 38 || col2H >= 8) ctx.oppHighStack = true;
+      }
+      return ctx;
+    }
+
+    update(dt, activeStyle, tetris, puyo, oppStyle = null, oppTetris = null, oppPuyo = null) {
       this.thinkTimer += dt;
       if (this.thinkTimer < this.getInterval()) return;
       this.thinkTimer = 0;
 
-      if (activeStyle === 'tetris') this.stepTetris(tetris);
-      else this.stepPuyo(puyo);
+      const oppCtx = this.difficulty === 'impossible'
+        ? this.buildOppContext(oppStyle, oppTetris, oppPuyo)
+        : null;
+
+      if (activeStyle === 'tetris') this.stepTetris(tetris, oppCtx);
+      else this.stepPuyo(puyo, oppCtx);
     }
 
-    stepTetris(b) {
+    rotateTetrisShortest(b, targetRot) {
+      const diff = ((targetRot - b.current.rot) % 4 + 4) % 4;
+      if (diff === 1) b.rotate(1);
+      else if (diff === 3) b.rotate(-1);
+      else if (diff === 2) {
+        if (typeof b.rotate180 === 'function') b.rotate180();
+        else b.rotate(1);
+      }
+    }
+
+    rotatePuyoShortest(b, targetRot) {
+      const diff = ((targetRot - b.current.rot) % 4 + 4) % 4;
+      if (diff === 3) b.rotate(-1);
+      else if (diff !== 0) b.rotate(1);
+    }
+
+    stepTetris(b, oppCtx = null) {
       if (b.dead || !b.current) return;
-      if (!this.plan || this.plan.ref !== b.current) this.plan = this.planTetris(b);
+      if (!this.plan || this.plan.ref !== b.current) this.plan = this.planTetris(b, oppCtx);
       if (!this.plan) return;
       if (this.plan.useHold && b.canHold) {
         b.doHold(); this.plan = null; return;
@@ -5326,7 +5473,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
 
       if (this.plan.tspinDir) {
         if (this.plan.stepPhase === 'align') {
-          if (b.current.rot !== this.plan.preRot) b.rotate(1);
+          if (b.current.rot !== this.plan.preRot) this.rotateTetrisShortest(b, this.plan.preRot);
           else if (b.current.x < this.plan.preX) { if (!b.move(1, 0)) { b.hardDrop(); this.tetrisMoves++; this.plan = null; } }
           else if (b.current.x > this.plan.preX) { if (!b.move(-1, 0)) { b.hardDrop(); this.tetrisMoves++; this.plan = null; } }
           else this.plan.stepPhase = 'drop';
@@ -5347,7 +5494,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
         }
       }
 
-      if (b.current.rot !== this.plan.rot) b.rotate(1);
+      if (b.current.rot !== this.plan.rot) this.rotateTetrisShortest(b, this.plan.rot);
       else if (b.current.x < this.plan.x) { if (!b.move(1, 0)) { b.hardDrop(); this.tetrisMoves++; this.plan = null; } }
       else if (b.current.x > this.plan.x) { if (!b.move(-1, 0)) { b.hardDrop(); this.tetrisMoves++; this.plan = null; } }
       else { b.hardDrop(); this.tetrisMoves++; this.plan = null; }
@@ -5364,25 +5511,10 @@ body.theme-light .lb-summary { color: var(--text-main); }
       return bonus;
     }
 
-    evalTetrisGrid(grid, lines, b, isTSpin, type, x, rot) {
-      const rows = 22, cols = 10;
-      const isPerfect = lines > 0 && grid.every(r => r.every(c => c === null));
-      const heights = Array(cols).fill(0);
-      let holes = 0, coveredCells = 0;
-      for (let c = 0; c < cols; c++) {
-        let found = false;
-        for (let r = 0; r < rows; r++) {
-          if (grid[r][c]) {
-            if (!found) { heights[c] = rows - r; found = true; }
-          } else if (found) {
-            holes++; coveredCells += (rows - r);
-          }
-        }
-      }
-      const aggH = heights.reduce((a, v) => a + v, 0);
-      const maxH = Math.max(...heights);
-      let bump = 0;
-      for (let c = 0; c < cols - 1; c++) bump += Math.abs(heights[c] - heights[c + 1]);
+    evalTetrisGrid(grid, lines, b, isTSpin, type, x, rot, simState = null, oppCtx = null) {
+      const st = getTetrisGridStats(grid);
+      const { heights, holes, coveredCells, shallowestHoleCover, aggH, maxH, bump } = st;
+      const isPerfect = lines > 0 && aggH === 0;
 
       if (this.difficulty === 'easy' || this.difficulty === 'normal') {
         const noise = this.difficulty === 'easy' ? 7 : 1.5;
@@ -5391,29 +5523,104 @@ body.theme-light .lb-summary { color: var(--text-main); }
       }
 
       const isImp = this.difficulty === 'impossible';
-      let score = 0;
-      if (isPerfect) score += 340;
-      if (isTSpin && lines >= 1) {
-        score += lines === 3 ? 58 : (lines === 2 ? 40 : 18);
-        if (b.b2b) score += 12;
-      } else if (lines === 4) {
-        score += 30 + (b.b2b ? 10 : 0);
-      } else if (lines > 0) {
-        if (b.combo >= 0) score += 9 + b.combo * 4.5;
-        else if (maxH >= 11 || b.pendingGarbage >= 4) score += lines * 7.2;
-        else score -= (b.b2b ? 5.2 : 1.5);
+      if (!isImp) {
+        let score = 0;
+        if (isPerfect) score += 340;
+        if (isTSpin && lines >= 1) {
+          score += lines === 3 ? 58 : (lines === 2 ? 40 : 18);
+          if (b.b2b) score += 12;
+        } else if (lines === 4) {
+          score += 30 + (b.b2b ? 10 : 0);
+        } else if (lines > 0) {
+          if (b.combo >= 0) score += 9 + b.combo * 4.5;
+          else if (maxH >= 11 || b.pendingGarbage >= 4) score += lines * 7.2;
+          else score -= (b.b2b ? 5.2 : 1.5);
+        }
+        if (maxH < 14) {
+          const tSlots = countTSpinSlots(grid);
+          if (tSlots > 0) score += tSlots * 8.5;
+        }
+        score += this.evalTetrisOpeningBonus(type, x, rot, heights, maxH);
+        if (maxH < 12 && heights[9] === 0 && heights[8] >= 2) score += 2.8;
+        score -= holes * 8.5 + coveredCells * 0.18 + aggH * 0.45 + bump * 0.36;
+        if (maxH >= 15) score -= (maxH - 14) * 5.5;
+        return score;
       }
 
+      // === IMPOSSIBLE-ONLY ADVANCED EVALUATION ===
+      const curB2B = simState ? simState.b2b : b.b2b;
+      const curCombo = simState ? simState.combo : b.combo;
+      const prevMaxH = simState ? simState.baseMaxH : maxH;
+      const prevHoles = simState ? simState.baseHoles : holes;
+      const prevTSlots = simState ? simState.baseTSlots : 0;
+      const downstackMode = (prevMaxH >= 12 || maxH >= 12 || b.pendingGarbage >= 5);
+      const oppDanger = !!(oppCtx && oppCtx.oppDanger);
+
+      let score = 0;
+      if (isPerfect) score += 450;
+
+      if (downstackMode) {
+        // Dynamic Downstack (掘り) Mode: prioritize uncovering shallowest hole, clearing lines & canceling garbage
+        if (isTSpin && lines >= 1) {
+          score += lines === 3 ? 72 : (lines === 2 ? 52 : 26);
+          if (curB2B) score += 14;
+        } else if (lines === 4) {
+          score += 42 + (curB2B ? 12 : 0);
+        } else if (lines > 0) {
+          score += lines * 14.5 + (curCombo >= 0 ? (8 + curCombo * 5.5) : 0);
+          if (b.pendingGarbage >= 5) score += lines * 6.5;
+        }
+        if (holes < prevHoles) score += (prevHoles - holes) * 18.0;
+        score -= shallowestHoleCover * 9.5 + holes * 15.0 + coveredCells * 0.65 + aggH * 0.72 + bump * 0.78;
+        if (maxH >= 14) score -= (maxH - 13) * 8.5;
+        return score;
+      }
+
+      // Normal / Offense / Finisher Mode
+      if (isTSpin && lines >= 1) {
+        score += lines === 3 ? 78 : (lines === 2 ? 54 : 24);
+        if (curB2B) score += 18;
+        if (curCombo >= 0) score += 6 + curCombo * 5.0;
+        if (oppDanger) score += lines * 10;
+      } else if (lines === 4) {
+        score += 38 + (curB2B ? 15 : 0);
+        if (curCombo >= 0) score += 6 + curCombo * 5.0;
+        if (oppDanger) score += 18;
+      } else if (lines > 0) {
+        if (oppDanger) {
+          // Finisher mode: send immediate attack / keep pressure instead of worrying about B2B
+          score += lines * 13.5 + (curCombo >= 0 ? (10 + curCombo * 6.5) : 0);
+        } else if (curCombo >= 1) {
+          // Keep strong REN going
+          score += 12 + curCombo * 6.2;
+        } else if (curCombo === 0 && lines >= 2) {
+          score += 6.5;
+        } else {
+          // Strong penalty for breaking B2B with weak single/double/triple clears
+          score -= curB2B ? 14.5 : 4.2;
+        }
+      }
+
+      // T-Spin slot construction & preservation
       if (maxH < 14) {
-        const tSlots = countTSpinSlots(grid);
-        if (tSlots > 0) score += tSlots * (isImp ? 14.5 : 8.5);
+        const ts = countTSpinSlotsDetailed(grid);
+        if (ts.total > 0) {
+          score += ts.tsd * 18.5 + ts.tst * 22.0;
+        }
+        // Penalize non-T pieces breaking an already prepared T-Spin slot without scoring
+        if (type !== 'T' && prevTSlots > 0 && ts.total < prevTSlots && lines === 0) {
+          score -= 16.0;
+        }
       }
 
       score += this.evalTetrisOpeningBonus(type, x, rot, heights, maxH);
 
-      if (maxH < 12 && heights[9] === 0 && heights[8] >= 2) score += 2.8;
-      score -= holes * (isImp ? 10.5 : 8.5) + coveredCells * 0.18 + aggH * 0.45 + bump * 0.36;
-      if (maxH >= 15) score -= (maxH - 14) * 5.5;
+      // Right-well (or col 0 well) Tetris readiness
+      if (maxH < 12 && heights[9] === 0 && heights[8] >= 2) score += 3.6;
+      if (maxH < 12 && heights[0] === 0 && heights[1] >= 2 && heights[9] > 0) score += 2.2;
+
+      score -= holes * 12.0 + shallowestHoleCover * 2.2 + coveredCells * 0.25 + aggH * 0.44 + bump * 0.40;
+      if (maxH >= 15) score -= (maxH - 14) * 6.5;
       return score;
     }
 
@@ -5444,6 +5651,114 @@ body.theme-light .lb-summary { color: var(--text-main); }
       return null;
     }
 
+    find3PlyPerfectClear(b, candidates) {
+      const quickHasHoleOrHigh = (grid, maxAllowedH) => {
+        for (let c = 0; c < 10; c++) {
+          let seen = false;
+          for (let r = 0; r < 22; r++) {
+            if (grid[r][c]) {
+              if (!seen) {
+                if (22 - r > maxAllowedH) return true;
+                seen = true;
+              }
+            } else if (seen) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+
+      for (const cand of candidates) {
+        const type1 = cand.type;
+        const next1 = cand.useHold ? (b.hold ? b.queue[0] : b.queue[1]) : b.queue[0];
+        const next2 = cand.useHold ? (b.hold ? b.queue[1] : b.queue[2]) : b.queue[1];
+        for (let r1 = 0; r1 < 4; r1++) {
+          for (let x1 = -2; x1 < b.cols; x1++) {
+            const s1 = simTetrisDropOnGrid(b.grid, type1, x1, r1);
+            if (!s1) continue;
+            if (s1.filled === 0) {
+              return { x: x1, y: s1.y, rot: r1, score: 520, ref: b.current, useHold: cand.useHold, tspinDir: 0 };
+            }
+            if (!next1 || s1.filled > 24) continue;
+            const can2 = ((s1.filled + 4) % 10 === 0);
+            const can3 = (next2 && ((s1.filled + 8) % 10 === 0) && !quickHasHoleOrHigh(s1.grid, 4));
+            if (!can2 && !can3) continue;
+
+            for (let r2 = 0; r2 < 4; r2++) {
+              for (let x2 = -2; x2 < b.cols; x2++) {
+                const s2 = simTetrisDropOnGrid(s1.grid, next1, x2, r2);
+                if (!s2) continue;
+                if (s2.filled === 0) {
+                  return { x: x1, y: s1.y, rot: r1, score: 460, ref: b.current, useHold: cand.useHold, tspinDir: 0 };
+                }
+                if (!can3 || (s2.filled + 4) % 10 !== 0 || s2.filled > 16 || quickHasHoleOrHigh(s2.grid, 4)) continue;
+                for (let r3 = 0; r3 < 4; r3++) {
+                  for (let x3 = -2; x3 < b.cols; x3++) {
+                    const s3 = simTetrisDropOnGrid(s2.grid, next2, x3, r3);
+                    if (s3 && s3.filled === 0) {
+                      return { x: x1, y: s1.y, rot: r1, score: 410, ref: b.current, useHold: cand.useHold, tspinDir: 0 };
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    collectTSpinMovesOnGrid(grid, cols, b, useHold, simState, oppCtx) {
+      const results = [];
+      const collidesAt = (px, py, rot) => {
+        for (const [cx, cy] of TETRIS_SHAPES.T[rot]) {
+          const nx = px + cx, ny = py + cy;
+          if (nx < 0 || nx >= cols || ny >= 22) return true;
+          if (ny >= 0 && grid[ny][nx]) return true;
+        }
+        return false;
+      };
+      for (let fromRot = 0; fromRot < 4; fromRot++) {
+        for (let x = -1; x < cols - 1; x++) {
+          if (collidesAt(x, 0, fromRot)) continue;
+          let y = 0;
+          while (!collidesAt(x, y + 1, fromRot)) y++;
+          for (const dir of [1, -1]) {
+            const toRot = (fromRot + dir + 4) % 4;
+            const kicks = SRS_JLSTZ[`${fromRot}>${toRot}`];
+            for (const [kx, ky] of kicks) {
+              const nx = x + kx, ny = y + ky;
+              if (!collidesAt(nx, ny, toRot)) {
+                const cx = nx + 1, cy = ny + 1;
+                let blocked = 0;
+                for (const [tx, ty] of [[cx - 1, cy - 1], [cx + 1, cy - 1], [cx - 1, cy + 1], [cx + 1, cy + 1]]) {
+                  if (tx < 0 || tx >= cols || ty >= 22 || (ty >= 0 && grid[ty][tx])) blocked++;
+                }
+                if (blocked >= 3) {
+                  const g = grid.map(r => r.slice());
+                  for (const [bx, by] of TETRIS_SHAPES.T[toRot]) if (ny + by >= 0 && ny + by < 22) g[ny + by][nx + bx] = 'T';
+                  let lines = 0;
+                  const kept = [];
+                  for (let r = 0; r < 22; r++) { if (g[r].every(c => c !== null)) lines++; else kept.push(g[r]); }
+                  while (kept.length < 22) kept.unshift(Array(10).fill(null));
+                  const sc = this.evalTetrisGrid(kept, lines, b, true, 'T', nx, toRot, simState, oppCtx);
+                  results.push({
+                    x: nx, y: ny, rot: toRot, score: sc, ref: b.current,
+                    useHold, tspinDir: useHold ? 0 : dir,
+                    preX: x, preRot: fromRot, stepPhase: 'align',
+                    grid: kept, lines, isTSpin: true
+                  });
+                }
+                break;
+              }
+            }
+          }
+        }
+      }
+      return results;
+    }
+
     planTetrisLite(b) {
       const type = b.current.type;
       const noise = this.difficulty === 'impossible' ? 0.5
@@ -5465,7 +5780,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
       return best;
     }
 
-    planTetris(b) {
+    planTetris(b, oppCtx = null) {
       const isImp = this.difficulty === 'impossible';
       const isHard = this.difficulty === 'hard';
       const candidates = [{ type: b.current.type, useHold: false }];
@@ -5477,117 +5792,183 @@ body.theme-light .lb-summary { color: var(--text-main); }
       if (isImp || isHard) {
         let filled = 0;
         for (let r = 0; r < b.rows; r++) for (let c = 0; c < b.cols; c++) if (b.grid[r][c]) filled++;
-        if (filled <= 12) {
+        if (isImp && filled <= 16) {
+          const pc3 = this.find3PlyPerfectClear(b, candidates);
+          if (pc3) return pc3;
+        } else if (isHard && filled <= 12) {
           const pcPlan = this.find2PlyPerfectClear(b, candidates);
           if (pcPlan) return pcPlan;
         }
       }
 
+      const baseStats = isImp ? getTetrisGridStats(b.grid) : null;
+      const baseTSlots = isImp ? countTSpinSlotsDetailed(b.grid).total : 0;
+      const baseSimState = isImp ? {
+        b2b: b.b2b,
+        combo: b.combo,
+        baseMaxH: baseStats.maxH,
+        baseHoles: baseStats.holes,
+        baseTSlots
+      } : null;
+
       const ply1List = [];
       for (const cand of candidates) {
         const type = cand.type;
+        const holdSaveTBonus = (isImp && cand.useHold && b.current.type === 'T' && !b.hold && baseTSlots === 0 && baseStats.maxH < 12) ? 6.5 : 0;
         for (let rot = 0; rot < 4; rot++) {
           for (let x = -2; x < b.cols; x++) {
             const sim = simTetrisDropOnGrid(b.grid, type, x, rot);
             if (!sim) continue;
-            const sc = this.evalTetrisGrid(sim.grid, sim.lines, b, false, type, x, rot);
-            ply1List.push({ x, y: sim.y, rot, score: sc, ref: b.current, useHold: cand.useHold, tspinDir: 0, grid: sim.grid });
+            const sc = this.evalTetrisGrid(sim.grid, sim.lines, b, false, type, x, rot, baseSimState, oppCtx) + holdSaveTBonus;
+            ply1List.push({
+              x, y: sim.y, rot, score: sc, ref: b.current,
+              useHold: cand.useHold, tspinDir: 0, grid: sim.grid,
+              lines: sim.lines, isTSpin: false
+            });
           }
         }
 
         if ((isImp || isHard) && type === 'T') {
-          for (let fromRot = 0; fromRot < 4; fromRot++) {
-            for (let x = -1; x < b.cols - 1; x++) {
-              if (b.collides(x, 0, fromRot, 'T')) continue;
-              let y = 0;
-              while (!b.collides(x, y + 1, fromRot, 'T')) y++;
-              for (const dir of [1, -1]) {
-                const toRot = (fromRot + dir + 4) % 4;
-                const kicks = SRS_JLSTZ[`${fromRot}>${toRot}`];
-                for (const [kx, ky] of kicks) {
-                  const nx = x + kx, ny = y + ky;
-                  if (!b.collides(nx, ny, toRot, 'T')) {
-                    const cx = nx + 1, cy = ny + 1;
-                    let blocked = 0;
-                    for (const [tx, ty] of [[cx-1,cy-1],[cx+1,cy-1],[cx-1,cy+1],[cx+1,cy+1]]) {
-                      if (tx < 0 || tx >= b.cols || ty >= b.rows || (ty >= 0 && b.grid[ty][tx])) blocked++;
-                    }
-                    if (blocked >= 3) {
-                      const g = b.grid.map(r => r.slice());
-                      for (const [bx, by] of TETRIS_SHAPES.T[toRot]) if (ny + by >= 0 && ny + by < 22) g[ny + by][nx + bx] = 'T';
-                      let lines = 0; const kept = [];
-                      for (let r = 0; r < 22; r++) { if (g[r].every(c => c !== null)) lines++; else kept.push(g[r]); }
-                      while (kept.length < 22) kept.unshift(Array(10).fill(null));
-                      const sc = this.evalTetrisGrid(kept, lines, b, true, 'T', nx, toRot);
-                      ply1List.push({
-                        x: nx, y: ny, rot: toRot, score: sc, ref: b.current,
-                        useHold: cand.useHold, tspinDir: cand.useHold ? 0 : dir,
-                        preX: x, preRot: fromRot, stepPhase: 'align', grid: kept
-                      });
-                    }
-                    break;
-                  }
-                }
-              }
-            }
-          }
+          const tspins = this.collectTSpinMovesOnGrid(b.grid, b.cols, b, cand.useHold, baseSimState, oppCtx);
+          for (const ts of tspins) ply1List.push(ts);
         }
       }
 
       if (ply1List.length === 0) return { x: b.current.x, y: 0, rot: 0, score: 0, ref: b.current, useHold: false, tspinDir: 0 };
       ply1List.sort((a, z) => z.score - a.score);
 
-      if (!isImp || ply1List[0].score >= 250) return ply1List[0];
-      const beam = ply1List.slice(0, 5);
-      let best = beam[0], bestTotal = -1e9;
-      for (const c1 of beam) {
-        const nextType = c1.useHold ? (b.hold ? b.queue[0] : b.queue[1]) : b.queue[0];
-        if (!nextType) {
+      if (!isImp || ply1List[0].score >= 340) return ply1List[0];
+
+      // === IMPOSSIBLE 3-PLY BEAM SEARCH (Ply1 Top 8 -> Ply2 Top 4 -> Ply3 Best) ===
+      const nextStateFrom = (prev, lines, isTSpin, grid) => {
+        const st = getTetrisGridStats(grid);
+        const nextB2B = lines === 0 ? prev.b2b : (lines === 4 || isTSpin);
+        const nextCombo = lines > 0 ? (prev.combo + 1) : -1;
+        return {
+          b2b: nextB2B,
+          combo: nextCombo,
+          baseMaxH: st.maxH,
+          baseHoles: st.holes,
+          baseTSlots: st.maxH < 14 ? countTSpinSlotsDetailed(grid).total : 0
+        };
+      };
+
+      const beam1 = ply1List.slice(0, 8);
+      let best = beam1[0];
+      let bestTotal = -1e9;
+
+      for (const c1 of beam1) {
+        const next1 = c1.useHold ? (b.hold ? b.queue[0] : b.queue[1]) : b.queue[0];
+        const next2 = c1.useHold ? (b.hold ? b.queue[1] : b.queue[2]) : b.queue[1];
+        if (!next1) {
           if (c1.score > bestTotal) { bestTotal = c1.score; best = c1; }
           continue;
         }
-        let best2 = -1e9;
+
+        const st1 = nextStateFrom(baseSimState, c1.lines, c1.isTSpin, c1.grid);
+        const ply2List = [];
         for (let r2 = 0; r2 < 4; r2++) {
           for (let x2 = -2; x2 < b.cols; x2++) {
-            const s2 = simTetrisDropOnGrid(c1.grid, nextType, x2, r2);
+            const s2 = simTetrisDropOnGrid(c1.grid, next1, x2, r2);
             if (!s2) continue;
-            const sc2 = this.evalTetrisGrid(s2.grid, s2.lines, b, false, nextType, x2, r2);
-            if (sc2 > best2) best2 = sc2;
+            const sc2 = this.evalTetrisGrid(s2.grid, s2.lines, b, false, next1, x2, r2, st1, oppCtx);
+            ply2List.push({ score: sc2, grid: s2.grid, lines: s2.lines, isTSpin: false });
           }
         }
-        const total = best2 > -1e8 ? (c1.score * 0.45 + best2 * 0.55) : c1.score;
-        if (total > bestTotal) { bestTotal = total; best = c1; }
+        if (next1 === 'T' && st1.baseTSlots > 0) {
+          const ts2 = this.collectTSpinMovesOnGrid(c1.grid, b.cols, b, false, st1, oppCtx);
+          for (const t of ts2) ply2List.push({ score: t.score, grid: t.grid, lines: t.lines, isTSpin: true });
+        }
+
+        if (ply2List.length === 0) {
+          if (c1.score > bestTotal) { bestTotal = c1.score; best = c1; }
+          continue;
+        }
+
+        ply2List.sort((a, z) => z.score - a.score);
+        const beam2 = ply2List.slice(0, 4);
+
+        let best23 = -1e9;
+        for (const c2 of beam2) {
+          if (!next2) {
+            if (c2.score > best23) best23 = c2.score;
+            continue;
+          }
+          const st2 = nextStateFrom(st1, c2.lines, c2.isTSpin, c2.grid);
+          let best3 = -1e9;
+          for (let r3 = 0; r3 < 4; r3++) {
+            for (let x3 = -2; x3 < b.cols; x3++) {
+              const s3 = simTetrisDropOnGrid(c2.grid, next2, x3, r3);
+              if (!s3) continue;
+              const sc3 = this.evalTetrisGrid(s3.grid, s3.lines, b, false, next2, x3, r3, st2, oppCtx);
+              if (sc3 > best3) best3 = sc3;
+            }
+          }
+          if (next2 === 'T' && st2.baseTSlots > 0) {
+            const ts3 = this.collectTSpinMovesOnGrid(c2.grid, b.cols, b, false, st2, oppCtx);
+            for (const t of ts3) if (t.score > best3) best3 = t.score;
+          }
+          const combined23 = best3 > -1e8 ? (c2.score * 0.45 + best3 * 0.55) : c2.score;
+          if (combined23 > best23) best23 = combined23;
+        }
+
+        const total = best23 > -1e8 ? (c1.score * 0.30 + best23 * 0.70) : c1.score;
+        if (total > bestTotal) {
+          bestTotal = total;
+          best = c1;
+        }
       }
       return best;
     }
 
-    stepPuyo(b) {
+    stepPuyo(b, oppCtx = null) {
       if (b.dead || b.phase !== 'active' || !b.current) return;
-      if (!this.plan || this.plan.ref !== b.current) this.plan = this.planPuyo(b);
+      if (!this.plan || this.plan.ref !== b.current) this.plan = this.planPuyo(b, oppCtx);
       if (!this.plan) return;
-      if (b.current.rot !== this.plan.rot) b.rotate(1);
+      if (b.current.rot !== this.plan.rot) this.rotatePuyoShortest(b, this.plan.rot);
       else if (b.current.x < this.plan.x) { if (!b.move(1, 0)) { b.hardDrop(); this.puyoMoves++; this.plan = null; } }
       else if (b.current.x > this.plan.x) { if (!b.move(-1, 0)) { b.hardDrop(); this.puyoMoves++; this.plan = null; } }
       else { b.hardDrop(); this.puyoMoves++; this.plan = null; }
     }
 
-    scorePuyoBoard(sim, isImp, danger, curCount, pendingGarbage, triggerDepth) {
+    scorePuyoBoard(sim, isImp, danger, curCount, pendingGarbage, triggerDepth, oppCtx = null) {
       let sc = 0;
-      const pot = probeMaxPotentialChain(sim.grid, triggerDepth);
-      if (sim.isChigiri) sc -= isImp ? 7.5 : 4.0;
+      const potInfo = isImp
+        ? probePotentialChainDetailed(sim.grid, triggerDepth)
+        : { maxChain: probeMaxPotentialChain(sim.grid, triggerDepth), maxOjamas: 0, accessibleTrigger: true, triggerCol: -1 };
+      const pot = potInfo.maxChain;
+      const oppVulnerable = !!(oppCtx && (oppCtx.oppDanger || oppCtx.oppHighStack));
+
+      if (sim.isChigiri) sc -= isImp ? 10.5 : 4.0;
 
       if (sim.chain > 0) {
         if (isImp) {
-          if (sim.chain >= 10) sc += 820 + sim.chain * 75;
-          else if (pendingGarbage >= 24 && sim.chain >= 5) sc += 420 + sim.chain * 42;
-          else if (danger && sim.chain >= 2 && sim.chain <= 4 && sim.totalOjamas >= pendingGarbage * 0.65 && pot >= 6) {
-            sc += 340 + pot * 25;
-          } else if (danger && sim.chain >= 2 && (sim.totalOjamas >= pendingGarbage * 0.65 || sim.chain >= 5)) {
-            sc += 270 + sim.chain * 34;
-          } else if (curCount >= 52 && sim.chain >= 4) {
-            sc += 210 + sim.chain * 32;
+          if (sim.chain >= 10) {
+            // Massive main chain (10-14+)
+            sc += 980 + sim.chain * 90 + sim.totalOjamas * 0.8;
+          } else if (oppVulnerable && sim.chain >= 2 && sim.chain <= 4 && sim.totalOjamas >= 12 && pot >= 5) {
+            // 潰し・催促（本線を壊さずに相手ピンチへ即発火）
+            sc += 560 + sim.totalOjamas * 3.5 + pot * 28;
+          } else if (pendingGarbage >= 12) {
+            // 対応・カウンター
+            if (sim.chain >= 2 && sim.chain <= 4 && sim.totalOjamas >= pendingGarbage * 0.75 && pot >= 5) {
+              // 本線温存の副砲対応を最優先
+              sc += 540 + pot * 32 + sim.totalOjamas * 2.0;
+            } else if (sim.totalOjamas >= pendingGarbage * 0.70 || sim.chain >= 5) {
+              // 副砲で足りなければ本線カウンター
+              sc += 460 + sim.chain * 48 + sim.totalOjamas * 1.4;
+            } else if (pendingGarbage >= 24 && sim.chain >= 3) {
+              sc += 280 + sim.chain * 32;
+            } else {
+              sc -= 90;
+            }
+          } else if (danger && curCount >= 52 && sim.chain >= 4) {
+            sc += 280 + sim.chain * 38;
+          } else if (oppVulnerable && sim.chain >= 5 && sim.totalOjamas >= 30) {
+            sc += 340 + sim.chain * 35;
           } else {
-            sc -= 95 - sim.chain * 8;
+            // 平時の1〜3連鎖誤爆を徹底抑制
+            sc -= (sim.chain <= 3 ? 220 : 120) - sim.chain * 10;
           }
         } else {
           if (sim.chain >= 4) sc += 200 + sim.chain * 38;
@@ -5597,16 +5978,26 @@ body.theme-light .lb-summary { color: var(--text-main); }
         }
       }
 
-      sc += pot * (isImp ? 44 : 26) + (pot >= 8 ? (pot - 7) * 18 : 0);
+      if (isImp) {
+        sc += pot * 52 + (pot >= 7 ? (pot - 6) * 26 : 0) + (pot >= 10 ? (pot - 9) * 32 : 0);
+        sc += Math.min(120, potInfo.maxOjamas * 0.35);
+        if (pot >= 4 && potInfo.accessibleTrigger) sc += 24;
+        else if (pot >= 5 && !potInfo.accessibleTrigger) sc -= 18;
+      } else {
+        sc += pot * 26 + (pot >= 8 ? (pot - 7) * 18 : 0);
+      }
 
-      if (this.puyoMoves < 6 && curCount <= 14) {
+      // Opening GTR & right-side chain tail structure
+      if (this.puyoMoves < 8 && curCount <= 18) {
         const g = sim.grid;
-        if (g[12][0] && g[12][0] === g[12][1]) sc += 16;
-        if (g[11][0] && g[10][1] && g[11][0] === g[10][1]) sc += 18;
-        if (g[11][0] && g[12][0] && g[11][0] !== g[12][0]) sc += 8;
-        if (g[12][3] && g[12][3] === g[11][3]) sc += 8;
-        if (g[12][4] && g[12][4] === g[11][4]) sc += 8;
-        if (g[12][2] === 0) sc += 5;
+        if (g[12][0] && g[12][0] === g[12][1]) sc += isImp ? 20 : 16;
+        if (g[11][0] && g[10][1] && g[11][0] === g[10][1]) sc += isImp ? 24 : 18;
+        if (g[11][0] && g[12][0] && g[11][0] !== g[12][0]) sc += isImp ? 12 : 8;
+        if (g[11][1] && g[12][2] && g[11][1] === g[12][2]) sc += isImp ? 14 : 0;
+        if (g[12][3] && g[12][3] === g[11][3]) sc += 9;
+        if (g[12][4] && g[12][4] === g[11][4]) sc += 9;
+        if (g[12][5] && g[12][5] === g[11][5]) sc += isImp ? 8 : 0;
+        if (g[12][2] === 0) sc += 6;
       }
 
       const vis = Array.from({ length: 13 }, () => new Uint8Array(6));
@@ -5629,24 +6020,33 @@ body.theme-light .lb-summary { color: var(--text-main); }
           }
         }
       }
-      sc += pairs * 5.5 + triples * 13.5;
+      sc += pairs * (isImp ? 6.5 : 5.5) + triples * (isImp ? 16.5 : 13.5);
 
       const colH = [0, 0, 0, 0, 0, 0];
       for (let c = 0; c < 6; c++) {
         for (let r = 1; r < 13; r++) if (sim.grid[r][c] !== 0) { colH[c] = 13 - r; break; }
       }
       if (isImp) {
-        if (sim.grid[12][0] && sim.grid[12][0] === sim.grid[12][1]) sc += 9;
-        if (sim.grid[11][0] && sim.grid[10][1] && sim.grid[11][0] === sim.grid[10][1]) sc += 8;
-        sc -= Math.max(0, colH[2] - 6) * 14;
-        for (let c = 0; c < 6; c++) if (colH[c] >= 11) sc -= 30;
+        // Persistent GTR fold + smooth U-shaped valley / chain tail balance
+        if (sim.grid[12][0] && sim.grid[12][0] === sim.grid[12][1]) sc += 11;
+        if (sim.grid[11][0] && sim.grid[10][1] && sim.grid[11][0] === sim.grid[10][1]) sc += 12;
+        if (sim.grid[11][1] && sim.grid[12][2] && sim.grid[11][1] === sim.grid[12][2]) sc += 8;
+        // Strongly avoid high stacking in death column (col 2)
+        sc -= Math.max(0, colH[2] - 5) * 18;
+        if (colH[2] >= 9) sc -= (colH[2] - 8) * 35;
+        // Penalize extreme cliffs between adjacent columns in tail (cols 2..5)
+        for (let c = 2; c < 5; c++) {
+          const diff = Math.abs(colH[c] - colH[c + 1]);
+          if (diff >= 4) sc -= (diff - 3) * 6.5;
+        }
+        for (let c = 0; c < 6; c++) if (colH[c] >= 11) sc -= 38;
       } else {
         sc -= Math.max(0, colH[2] - 7) * 12;
       }
       return sc;
     }
 
-    planPuyo(b) {
+    planPuyo(b, oppCtx = null) {
       let best = { x: 2, rot: 0, score: -1e9, ref: b.current };
       const isImp = this.difficulty === 'impossible';
       const isHard = this.difficulty === 'hard';
@@ -5679,7 +6079,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
             continue;
           }
 
-          const sc = this.scorePuyoBoard(sim, isImp, danger, curCount, b.pendingGarbage, isImp ? 2 : 1);
+          const sc = this.scorePuyoBoard(sim, isImp, danger, curCount, b.pendingGarbage, isImp ? 2 : 1, oppCtx);
           ply1List.push({ x, rot, score: sc, sim });
         }
       }
@@ -5693,29 +6093,60 @@ body.theme-light .lb-summary { color: var(--text-main); }
         return { x: top.x, rot: top.rot, score: top.score, ref: b.current };
       }
 
-      const nextPair = b.queue[0];
-      if (!nextPair || ply1List[0].score >= 550) {
+      const next1 = b.queue[0];
+      const next2 = b.queue[1];
+      // Immediate lethal/main-chain/counter firing on ply 1
+      if (!next1 || ply1List[0].score >= 700) {
         const top = ply1List[0];
         return { x: top.x, rot: top.rot, score: top.score, ref: b.current };
       }
 
-      const beam = ply1List.slice(0, 5);
-      for (const cand of beam) {
-        if (cand.sim.chain >= 4 && danger) {
-          if (cand.score > best.score) best = { x: cand.x, rot: cand.rot, score: cand.score, ref: b.current };
+      // === IMPOSSIBLE 3-PLY BEAM SEARCH (Ply1 Top 7 -> Ply2 Top 4 -> Ply3 Best) ===
+      const beam1 = ply1List.slice(0, 7);
+      for (const c1 of beam1) {
+        if (c1.sim.chain >= 4 && danger) {
+          if (c1.score > best.score) best = { x: c1.x, rot: c1.rot, score: c1.score, ref: b.current };
           continue;
         }
-        let best2 = -1e9;
+        const ply2List = [];
         for (let r2 = 0; r2 < 4; r2++) {
           for (let x2 = 0; x2 < 6; x2++) {
-            const sim2 = simPuyoDrop(cand.sim.grid, x2, r2, nextPair[0], nextPair[1]);
+            const sim2 = simPuyoDrop(c1.sim.grid, x2, r2, next1[0], next1[1]);
             if (!sim2 || sim2.died) continue;
-            const sc2 = this.scorePuyoBoard(sim2, true, danger, curCount + 2, b.pendingGarbage, 2);
-            if (sc2 > best2) best2 = sc2;
+            const sc2 = this.scorePuyoBoard(sim2, true, danger, curCount + 2, b.pendingGarbage, 1, oppCtx);
+            ply2List.push({ score: sc2, sim: sim2 });
           }
         }
-        const total = best2 > -1e8 ? (cand.score * 0.35 + best2 * 0.65) : cand.score;
-        if (total > best.score) best = { x: cand.x, rot: cand.rot, score: total, ref: b.current };
+        if (ply2List.length === 0) {
+          if (c1.score > best.score) best = { x: c1.x, rot: c1.rot, score: c1.score, ref: b.current };
+          continue;
+        }
+        ply2List.sort((a, z) => z.score - a.score);
+        const beam2 = ply2List.slice(0, 4);
+
+        let best23 = -1e9;
+        for (const c2 of beam2) {
+          if (!next2 || c2.score >= 700) {
+            if (c2.score > best23) best23 = c2.score;
+            continue;
+          }
+          let best3 = -1e9;
+          for (let r3 = 0; r3 < 4; r3++) {
+            for (let x3 = 0; x3 < 6; x3++) {
+              const sim3 = simPuyoDrop(c2.sim.grid, x3, r3, next2[0], next2[1]);
+              if (!sim3 || sim3.died) continue;
+              const sc3 = this.scorePuyoBoard(sim3, true, danger, curCount + 4, b.pendingGarbage, 1, oppCtx);
+              if (sc3 > best3) best3 = sc3;
+            }
+          }
+          const combined23 = best3 > -1e8 ? (c2.score * 0.45 + best3 * 0.55) : c2.score;
+          if (combined23 > best23) best23 = combined23;
+        }
+
+        const total = best23 > -1e8 ? (c1.score * 0.28 + best23 * 0.72) : c1.score;
+        if (total > best.score) {
+          best = { x: c1.x, rot: c1.rot, score: total, ref: b.current };
+        }
       }
       return best;
     }
@@ -6799,22 +7230,22 @@ body.theme-light .lb-summary { color: var(--text-main); }
         this.dangerBeepTimer = 0;
       }
 
+      const curLeftSt = this.getActiveStyle(true);
+      const curOppSt = this.getActiveStyle(false);
       if (this.isSpectate) {
-        const leftSt = this.getActiveStyle(true);
-        this.leftCpu.update(dt, leftSt, this.selfTetris, this.selfPuyo);
-        if (leftSt === 'tetris') this.selfTetris.update(dt, false);
+        this.leftCpu.update(dt, curLeftSt, this.selfTetris, this.selfPuyo, curOppSt, this.oppTetris, this.oppPuyo);
+        if (curLeftSt === 'tetris') this.selfTetris.update(dt, false);
         else this.selfPuyo.update(dt, false);
       } else {
         input.update(dt);
         const softHeld = input.isActionDown('down');
-        if (this.getActiveStyle(true) === 'tetris') this.selfTetris.update(dt, softHeld);
+        if (curLeftSt === 'tetris') this.selfTetris.update(dt, softHeld);
         else this.selfPuyo.update(dt, softHeld);
       }
 
       if (this.isCpu || this.isSpectate) {
-        const oppSt = this.getActiveStyle(false);
-        this.cpu.update(dt, oppSt, this.oppTetris, this.oppPuyo);
-        if (oppSt === 'tetris') this.oppTetris.update(dt, false);
+        this.cpu.update(dt, curOppSt, this.oppTetris, this.oppPuyo, curLeftSt, this.selfTetris, this.selfPuyo);
+        if (curOppSt === 'tetris') this.oppTetris.update(dt, false);
         else this.oppPuyo.update(dt, false);
       }
 
