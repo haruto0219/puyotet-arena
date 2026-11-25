@@ -2354,8 +2354,12 @@ body.theme-light .lb-summary { color: var(--text-main); }
     }
   }
 
+  let cloudProfileLoadingUid = null;
+
   async function loadOrMigrateCloudProfile(user) {
     if (!fbReady || !fbDb || !user) return;
+    if (cloudProfileLoadingUid === user.uid) return;
+    cloudProfileLoadingUid = user.uid;
     setCloudBadgeState('syncing');
     try {
       const ref = fbDb.collection('users').doc(user.uid);
@@ -2381,6 +2385,8 @@ body.theme-light .lb-summary { color: var(--text-main); }
       }
     } catch (e) {
       setCloudBadgeState('error');
+    } finally {
+      if (cloudProfileLoadingUid === user.uid) cloudProfileLoadingUid = null;
     }
   }
 
@@ -5438,6 +5444,27 @@ body.theme-light .lb-summary { color: var(--text-main); }
       return null;
     }
 
+    planTetrisLite(b) {
+      const type = b.current.type;
+      const noise = this.difficulty === 'impossible' ? 0.5
+        : this.difficulty === 'hard' ? 2.0
+        : this.difficulty === 'normal' ? 6.0 : 14.0;
+      let best = null;
+      let bestSc = -1e9;
+      for (let rot = 0; rot < 4; rot++) {
+        for (let x = -2; x < b.cols; x++) {
+          const sim = simTetrisDropOnGrid(b.grid, type, x, rot);
+          if (!sim) continue;
+          const sc = this.evalTetrisGrid(sim.grid, sim.lines, b, false, type, x, rot) + (Math.random() - 0.5) * noise;
+          if (sc > bestSc) {
+            bestSc = sc;
+            best = { x, y: sim.y, rot, ref: b.current, useHold: false, tspinDir: 0 };
+          }
+        }
+      }
+      return best;
+    }
+
     planTetris(b) {
       const isImp = this.difficulty === 'impossible';
       const isHard = this.difficulty === 'hard';
@@ -6674,7 +6701,7 @@ body.theme-light .lb-summary { color: var(--text-main); }
       }
     },
 
-    startCountdown() {
+    startCountdown(onGo = null) {
       const ov = document.getElementById('overlayCountdown');
       const txt = document.getElementById('countdownText');
       ov.classList.add('active');
@@ -6693,7 +6720,11 @@ body.theme-light .lb-summary { color: var(--text-main); }
           setTimeout(() => {
             ov.classList.remove('active');
             this.countdownActive = false;
-            this.active = true;
+            if (typeof onGo === 'function') {
+              onGo();
+            } else {
+              this.active = true;
+            }
             sound.fastMode = false;
             sound.startBGM();
           }, 450);
@@ -6855,6 +6886,10 @@ body.theme-light .lb-summary { color: var(--text-main); }
         ? (this.selfTetris.score + this.selfPuyo.score)
         : this.getActiveBoard(true).score;
       document.getElementById('resStatsSummary').textContent = `TOTAL SCORE: ${sc.toLocaleString()}`;
+      const playRepBtn = document.getElementById('btnPlayReplay');
+      const saveRepBtn = document.getElementById('btnSaveReplay');
+      if (playRepBtn) playRepBtn.style.display = '';
+      if (saveRepBtn) saveRepBtn.style.display = '';
     },
 
     finishMatch(won, reasonText, isDisconnectForfeit = false) {
@@ -7511,6 +7546,10 @@ body.theme-light .lb-summary { color: var(--text-main); }
   }
 
   function togglePause() {
+    if (typeof br99 !== 'undefined' && br99.isOpen) {
+      br99.togglePause();
+      return;
+    }
     battle.paused = !battle.paused;
     document.getElementById('overlayPause').classList.toggle('active', battle.paused);
   }
@@ -8346,6 +8385,14 @@ body.theme-light .lb-summary { color: var(--text-main); }
     battle.doPuyoUndo();
   });
   function quickRetryMatch() {
+    if (typeof br99 !== 'undefined' && br99.isOpen) {
+      if (br99.isOnline) return;
+      sound.unlock();
+      sound.stopBGM();
+      document.querySelectorAll('.overlay').forEach(o => o.classList.remove('active'));
+      br99.startSolo();
+      return;
+    }
     if (battle.isOnline || !lastSoloOpts) return;
     sound.unlock();
     sound.stopBGM();
@@ -9339,11 +9386,15 @@ body.theme-light .lb-summary { color: var(--text-main); }
       document.getElementById('overlayResult').classList.remove('active');
       document.getElementById('overlayPause').classList.remove('active');
 
+      battle.soloSubType = null;
+      battle.zeroGravity = false;
+      battle.active = false;
       this.isOpen = true;
       this.isOnline = !!isOnline;
       this.active = false;
       this.paused = false;
       this.ended = false;
+      this.cpuCursor = 0;
       this.tactic = 'random';
       this.counterAttackers = [];
       this.koCount = 0;
@@ -9437,7 +9488,11 @@ body.theme-light .lb-summary { color: var(--text-main); }
       sound.resetBgmSteps();
       sound.setBgmTrack('tetris');
       battle.countdownActive = true;
-      battle.startCountdown();
+      battle.startCountdown(() => {
+        if (this.isOpen && !this.ended) {
+          this.active = true;
+        }
+      });
     },
 
     seedInitialCpuStack(b, diff) {
@@ -9754,14 +9809,22 @@ body.theme-light .lb-summary { color: var(--text-main); }
         document.getElementById('br99SelfZone').classList.toggle('danger', this.selfBoard.isInDanger());
       }
 
-      // Update CPU players
-      for (const p of this.players) {
+      // Update CPU players (throttled per-frame lightweight 1-ply AI to keep 60fps)
+      const MAX_CPU_PLANS_PER_FRAME = 4;
+      let plannedThisFrame = 0;
+      const totalPlayers = this.players.length;
+      const startCursor = this.cpuCursor || 0;
+      for (let step = 0; step < totalPlayers; step++) {
+        const idx = (startCursor + step) % totalPlayers;
+        const p = this.players[idx];
         if (p.isHuman || !p.alive || !p.board || !p.cpu) continue;
         p.aiTimer += dt * speedMult;
-        if (p.aiTimer >= p.aiInterval) {
+        if (p.aiTimer >= p.aiInterval && plannedThisFrame < MAX_CPU_PLANS_PER_FRAME) {
           p.aiTimer = 0;
+          plannedThisFrame++;
+          this.cpuCursor = (idx + 1) % totalPlayers;
           if (!p.board.dead && p.board.current) {
-            const plan = p.cpu.planTetris(p.board);
+            const plan = p.cpu.planTetrisLite(p.board);
             if (plan) {
               p.board.current.rot = plan.rot;
               p.board.current.x = Math.max(-2, Math.min(p.board.cols - 1, plan.x));
@@ -10019,7 +10082,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       }
       if (cred && cred.user) {
         fbUser = cred.user;
-        await loadOrMigrateCloudProfile(cred.user);
       }
       document.getElementById('authPassword').value = '';
       document.getElementById('overlayAuth').classList.remove('active');
@@ -10045,7 +10107,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
       const cred = await fbAuth.signInWithPopup(provider);
       if (cred && cred.user) {
         fbUser = cred.user;
-        await loadOrMigrateCloudProfile(cred.user);
       }
       document.getElementById('overlayAuth').classList.remove('active');
       renderAuthModalUI();
@@ -10098,12 +10159,14 @@ body.theme-light .lb-summary { color: var(--text-main); }
       document.querySelectorAll('.mode-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'br99'));
       document.querySelectorAll('.mode-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-br99'));
       document.getElementById('inputBr99RoomId').value = code;
+      try { window.history.replaceState({}, document.title, window.location.pathname + window.location.hash); } catch (e) {}
       setTimeout(() => { if (typeof br99 !== 'undefined') br99.openOnlineLobby('room', code); }, 250);
     } else if (inviteRoom) {
       const code = inviteRoom.trim().toUpperCase();
       document.querySelectorAll('.mode-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === 'room'));
       document.querySelectorAll('.mode-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-room'));
       document.getElementById('inputRoomId').value = code;
+      try { window.history.replaceState({}, document.title, window.location.pathname + window.location.hash); } catch (e) {}
       setTimeout(() => net.joinRoom(code), 250);
     }
   } catch (e) {}
