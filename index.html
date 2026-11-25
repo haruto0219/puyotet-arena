@@ -2096,18 +2096,6 @@ body.theme-light .lb-summary { color: var(--text-main); }
   </div>
 </div>
 
-<!-- STEALTH PASSCODE DIALOG -->
-<div class="overlay" id="overlayAdmGate">
-  <div class="result-card" style="max-width:300px;padding:18px;">
-    <div style="font-size:0.84rem;font-weight:800;color:var(--text-dim);margin-bottom:10px;">PASSCODE</div>
-    <input type="password" id="admPassInput" class="input-field" inputmode="numeric" maxlength="8" autocomplete="off" style="text-align:center;letter-spacing:0.3em;margin-bottom:10px;">
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-primary" id="btnAdmEnter" style="flex:1;padding:8px;font-size:0.82rem;">OK</button>
-      <button class="btn btn-ghost" id="btnAdmCancel" style="flex:1;padding:8px;font-size:0.82rem;">Cancel</button>
-    </div>
-  </div>
-</div>
-
 <!-- ADMIN DEBUG PANEL -->
 <div class="overlay" id="overlayAdmPanel">
   <div class="result-card" style="max-width:560px;max-height:88dvh;overflow-y:auto;padding:18px;">
@@ -8439,25 +8427,9 @@ body.theme-light .lb-summary { color: var(--text-main); }
     sound.playSE('move');
   });
 
-  // Stealth 7-tap Admin Trigger on #brandHomeBtn
+  // Stealth 7-tap Admin Trigger on #brandHomeBtn (Firebase Admin UID gated)
+  const ADMIN_UIDS = new Set(['0XPmX9UXTkUkEZ186zu1nMZjdUB3', 'sOZHCQXzoMdzZcW6ApMkDKtVhsZ2']);
   let admTapTimes = [];
-  document.getElementById('brandHomeBtn').addEventListener('click', () => {
-    const now = performance.now();
-    admTapTimes.push(now);
-    admTapTimes = admTapTimes.filter(t => now - t <= 2500);
-    if (admTapTimes.length >= 7) {
-      admTapTimes = [];
-      const inp = document.getElementById('admPassInput');
-      inp.value = '';
-      document.getElementById('overlayAdmGate').classList.add('active');
-      setTimeout(() => inp.focus(), 40);
-    }
-  });
-
-  function closeAdmGate() {
-    document.getElementById('admPassInput').value = '';
-    document.getElementById('overlayAdmGate').classList.remove('active');
-  }
 
   function refreshAdmBattleControls() {
     const online = battle.isOnline;
@@ -8473,22 +8445,21 @@ body.theme-light .lb-summary { color: var(--text-main); }
     });
   }
 
-  function submitAdmPass() {
-    const val = document.getElementById('admPassInput').value.trim();
-    closeAdmGate();
-    if (val === '8610') {
+  document.getElementById('brandHomeBtn').addEventListener('click', () => {
+    if (!fbUser || !ADMIN_UIDS.has(fbUser.uid)) {
+      admTapTimes = [];
+      return;
+    }
+    const now = performance.now();
+    admTapTimes.push(now);
+    admTapTimes = admTapTimes.filter(t => now - t <= 2500);
+    if (admTapTimes.length >= 7) {
+      admTapTimes = [];
       document.getElementById('admResetConfirmRow').style.display = 'none';
       document.getElementById('admRateInput').value = profile.rating;
       refreshAdmBattleControls();
       document.getElementById('overlayAdmPanel').classList.add('active');
     }
-  }
-
-  document.getElementById('btnAdmEnter').addEventListener('click', submitAdmPass);
-  document.getElementById('btnAdmCancel').addEventListener('click', closeAdmGate);
-  document.getElementById('admPassInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); submitAdmPass(); }
-    else if (e.key === 'Escape') { e.preventDefault(); closeAdmGate(); }
   });
   document.getElementById('btnAdmClose').addEventListener('click', () => {
     document.getElementById('overlayAdmPanel').classList.remove('active');
