@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta name="google-site-verification" content="EA_3B_uSKFcfWQtOPEsxGeFltPc0-MhrW3HyOmtDEGo" />    
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PUYOTET ARENA｜無料オンライン対戦落ち物パズルゲーム（ブラウザ対応）</title>
+<meta name="description" content="インストール不要・完全無料で遊べるオンライン対戦落ち物パズル「PUYOTET ARENA」。ランクマッチ、フレンド対戦、99人バトルロイヤル、40ライン・チーズレース・連鎖エディタまでPC・スマホのブラウザですぐにプレイ可能！">
+<link rel="canonical" href="https://haruto0219.github.io/puyotet-arena/">
+
+<!-- SNSシェア用（OGP / Xカード） -->
+<meta property="og:site_name" content="PUYOTET ARENA">
+<meta property="og:title" content="PUYOTET ARENA｜無料オンライン対戦パズルゲーム">
+<meta property="og:description" content="ブラウザですぐ遊べるオンライン対戦パズル！ランクマッチ・フレンド戦・99人バトルロイヤル・CPU対戦対応。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://haruto0219.github.io/puyotet-arena/">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="PUYOTET ARENA｜無料オンライン対戦パズルゲーム">
+<meta name="twitter:description" content="インストール不要・無料のブラウザ対戦パズル。ランクマ・ルーム戦・99人バトロワ対応！">
+
+<!-- Google検索向け構造化データ（Webゲームとして認識させる） -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "PUYOTET ARENA",
+  "description": "インストール不要・無料で遊べるブラウザ対応のオンライン対戦落ち物パズルゲーム。ランクマッチ、フレンド対戦、99人バトルロイヤル、CPU戦、40ライン、連鎖エディタを搭載。",
+  "url": "https://haruto0219.github.io/puyotet-arena/",
+  "genre": ["Puzzle", "Action"],
+  "playMode": ["SinglePlayer", "MultiPlayer"],
+  "applicationCategory": "Game",
+  "operatingSystem": "Web Browser",
+  "inLanguage": "ja",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "JPY"
+  }
+}
+</script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="fxCanvas"></canvas>
+
+<header class="topbar">
+  <div class="brand" id="brandHomeBtn">
+    <span class="brand-logo">PUYOTET ARENA</span>
+    <span class="brand-tag">ONLINE RANKED</span>
+    <span class="pad-badge" id="padBadge">🎮 PAD</span>
+  </div>
+  <div class="top-controls">
+    <button class="pill-btn" id="btnAuthModal">👤 ログイン / 登録</button>
+    <span class="coin-pill" id="topCoinPill">🪙 200</span>
+    <button class="pill-btn" id="btnLeaderboardModal">🏆 ランキング</button>
+    <button class="pill-btn" id="btnAchModal" style="position:relative;">🏅 実績・ミッション<span class="notif-dot" id="dailyNotifDot"></span></button>
+    <button class="pill-btn" id="btnSkillModal">🎰 スキルガチャ / 編成</button>
+    <button class="pill-btn" id="btnShopModal">🛒 ショップ</button>
+    <button class="pill-btn" id="btnHandlingModal">⚙️ 設定</button>
+    <button class="pill-btn active" id="btnBgmToggle">🎵 BGM: ON</button>
+    <button class="pill-btn active" id="btnSeToggle">🔊 SE: ON</button>
+  </div>
+</header>
+
+<main class="app-shell">
+  <!-- LOBBY SCREEN -->
+  <section id="screenLobby" class="screen active">
+    <div class="lobby-grid">
+      <!-- Left: Profile & History -->
+      <div class="panel lobby-left">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+          <div class="panel-title" style="margin-bottom:0;">👤 プレイヤープロフィール</div>
+        </div>
+        <button type="button" class="cloud-badge" id="cloudSyncBadge" title="アカウント設定・クラウド同期を開く">☁ クラウド保存：未ログイン（ゲスト）</button>
+        <div class="profile-header">
+          <div>
+            <div style="font-size:0.72rem;color:var(--text-dim);">CURRENT RATING</div>
+            <div class="rating-big" id="profRating">1500</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="display:flex;gap:5px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">
+              <span id="profTitleBadge" class="title-badge"></span>
+              <div id="profRankBadge" class="rank-badge rank-GOLD">GOLD</div>
+            </div>
+            <div style="font-size:0.74rem;color:var(--text-dim);margin-top:6px;">
+              最高レート: <strong id="profMaxRating" style="color:var(--text-main);">1500</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="skill-rate-box" id="profSkillRateBox">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:0.72rem;font-weight:800;color:#c084fc;">⚡ SKILL RATING</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <strong id="profSkillRating" style="font-family:monospace;font-size:1.05rem;color:var(--text-main);">1500</strong>
+              <span id="profSkillRankBadge" class="rank-badge rank-GOLD" style="font-size:0.65rem;padding:2px 6px;">GOLD</span>
+              <span id="profSkillWL" style="font-size:0.7rem;color:var(--text-dim);font-weight:700;">0W-0L</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="xp-box" id="profXpBox">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="lv-badge" id="profLevelBadge">Lv.1</span>
+              <span class="prestige-badge" id="profPrestigeBadge" style="display:none;">★1</span>
+              <span class="pid-badge guest" id="profPlayerIdBadge">ID: GUEST</span>
+              <span id="profJoinedAt" style="font-size:0.68rem;color:var(--text-dim);font-weight:700;display:none;"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span id="profXpText" style="font-size:0.72rem;color:var(--text-dim);font-weight:700;">0 / 100 XP</span>
+              <button type="button" class="btn btn-gold" id="btnPrestige" style="display:none;padding:3px 9px;font-size:0.7rem;">✨ 転生する</button>
+            </div>
+          </div>
+          <div class="prog-track" style="margin-top:5px;"><div class="prog-fill xp-fill" id="profXpFill" style="width:0%;"></div></div>
+        </div>
+
+        <div class="form-row">
+          <label class="form-label" for="inputPlayerName">プレイヤー名</label>
+          <input id="inputPlayerName" class="input-field" maxlength="16" placeholder="PLAYER">
+        </div>
+        <div class="form-row">
+          <span class="form-label">お気に入りスタイル</span>
+          <div class="seg-group" id="favStyleGroup">
+            <button class="seg-btn active" data-val="tetris">🟦 テトリス</button>
+            <button class="seg-btn puyo" data-val="puyo">🟣 ぷよぷよ</button>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-box">
+            <div class="stat-label">勝敗</div>
+            <div class="stat-val" id="profWL">0W - 0L</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">勝率</div>
+            <div class="stat-val" id="profWinRate">0%</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">連勝</div>
+            <div class="stat-val" id="profStreak">0</div>
+          </div>
+        </div>
+
+        <div class="panel-title" style="margin-top:14px;">📜 直近10戦の対戦履歴</div>
+        <div class="history-list" id="historyList">
+          <div style="font-size:0.8rem;color:var(--text-dim);padding:10px;text-align:center;">まだ対戦履歴がありません</div>
+        </div>
+      </div>
+
+      <!-- Right: Modes -->
+      <div class="lobby-right">
+        <div class="panel lobby-modes-panel">
+          <div class="mode-tabs">
+            <button class="mode-tab active" data-tab="ranked">
+              🏆 ランクマッチ
+              <small>自動マッチング・レート変動</small>
+            </button>
+            <button class="mode-tab" data-tab="room">
+              🔑 ルーム対戦
+              <small>フレンド戦・ID共有</small>
+            </button>
+            <button class="mode-tab" data-tab="br99">
+              👑 TETRIS 99
+              <small>99人バトルロイヤル</small>
+            </button>
+            <button class="mode-tab" data-tab="solo">
+              🎮 ソロ / CPU / 観戦
+              <small>練習・40L・Ultra・AI戦</small>
+            </button>
+          </div>
+
+          <!-- TAB 1: RANKED / FREE MATCH -->
+          <div id="pane-ranked" class="mode-pane active">
+            <div class="form-row" style="margin-bottom:10px;">
+              <span class="form-label">オンライン自動マッチング種別</span>
+              <div class="seg-group" id="onlineMatchKindGroup">
+                <button class="seg-btn active" data-val="ranked">🏆 ランクマッチ（レート変動あり）</button>
+                <button class="seg-btn" data-val="free">🌐 フリーマッチ（レート変動なし）</button>
+              </div>
+            </div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;">
+              <div class="form-row">
+                <span class="form-label">対戦ルール</span>
+                <div class="seg-group" id="rankedRuleGroup">
+                  <button class="seg-btn active" data-val="vs">⚔️ VS</button>
+                  <button class="seg-btn" data-val="swap">🔄 SWAP</button>
+                  <button class="seg-btn" data-val="bigbang" id="btnRuleBigBangOnline" style="display:none;">💥 BIG BANG</button>
+                  <button class="seg-btn puyo" data-val="skill">⚡ SKILL BATTLE</button>
+                </div>
+              </div>
+              <div class="form-row">
+                <span class="form-label">先取本数</span>
+                <div class="seg-group" id="rankedFtGroup">
+                  <button class="seg-btn" data-val="1">1本勝負 (FT1)</button>
+                  <button class="seg-btn active" data-val="2">2本先取 (FT2)</button>
+                </div>
+              </div>
+            </div>
+            <div class="form-row" id="rankedStyleRow">
+              <span class="form-label">使用スタイル</span>
+              <div class="seg-group" id="rankedStyleGroup">
+                <button class="seg-btn active" data-val="tetris">🟦 テトリス</button>
+                <button class="seg-btn puyo" data-val="puyo">🟣 ぷよぷよ</button>
+              </div>
+            </div>
+            <p id="onlineMatchDesc" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:14px;line-height:1.5;">
+              相手とのレート差に応じてElo式（K=32）でレートが変動します。スキルバトルは別枠の「スキルバトルレート」が変動します。
+            </p>
+            <button class="btn btn-primary" id="btnFindRanked" style="width:100%;padding:13px;font-size:1rem;">
+              🔍 対戦相手をさがす
+            </button>
+            <div class="search-box" id="rankedSearchBox">
+              <div style="display:flex;align-items:center;gap:12px;">
+                <div class="spinner"></div>
+                <div>
+                  <div style="font-weight:800;font-size:0.9rem;" id="rankedSearchStatus">公開スロットを検索中...</div>
+                  <div style="font-size:0.75rem;color:var(--text-dim);" id="rankedSearchSub">接続先を探しています</div>
+                </div>
+              </div>
+              <button class="btn btn-danger" id="btnCancelRanked">キャンセル</button>
+            </div>
+          </div>
+
+          <!-- TAB 2: ROOM BATTLE -->
+          <div id="pane-room" class="mode-pane">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div style="padding:12px;border-radius:10px;background:rgba(7,10,20,0.55);border:1px solid rgba(148,163,184,0.18);">
+                <div style="font-weight:800;margin-bottom:10px;color:var(--cyan);">ルームを作成</div>
+                <div class="form-row">
+                  <span class="form-label">ルール / 先取</span>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <div class="seg-group" id="roomRuleGroup">
+                      <button class="seg-btn active" data-val="vs">VS</button>
+                      <button class="seg-btn" data-val="swap">SWAP</button>
+                      <button class="seg-btn" data-val="bigbang">💥 BIG BANG</button>
+                      <button class="seg-btn puyo" data-val="skill">⚡ SKILL</button>
+                    </div>
+                    <div class="seg-group" id="roomFtGroup">
+                      <button class="seg-btn" data-val="1">1本</button>
+                      <button class="seg-btn active" data-val="2">2本先取</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="form-row">
+                  <span class="form-label">ぷよ色数（ルーム対戦は完全フリー・レート変動なし）</span>
+                  <div class="seg-group" id="roomPuyoColorGroup">
+                    <button class="seg-btn" data-val="3">3色</button>
+                    <button class="seg-btn active" data-val="4">4色</button>
+                    <button class="seg-btn puyo" data-val="5">5色</button>
+                  </div>
+                </div>
+                <div class="form-row" style="margin-bottom:8px;">
+                  <span class="form-label">⚔️ 火力ハンデ (ホスト / ゲスト)</span>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                    <div class="seg-group" id="roomHostAtkGroup">
+                      <button class="seg-btn" data-val="50">50%</button>
+                      <button class="seg-btn active" data-val="100">100%</button>
+                      <button class="seg-btn" data-val="150">150%</button>
+                      <button class="seg-btn" data-val="200">200%</button>
+                    </div>
+                    <span style="font-size:0.72rem;color:var(--text-dim);">vs</span>
+                    <div class="seg-group" id="roomGuestAtkGroup">
+                      <button class="seg-btn" data-val="50">50%</button>
+                      <button class="seg-btn active" data-val="100">100%</button>
+                      <button class="seg-btn" data-val="150">150%</button>
+                      <button class="seg-btn" data-val="200">200%</button>
+                    </div>
+                  </div>
+                </div>
+                <button class="btn btn-pink" id="btnCreateRoom" style="width:100%;">ルームを作成</button>
+              </div>
+
+              <div style="padding:12px;border-radius:10px;background:rgba(7,10,20,0.55);border:1px solid rgba(148,163,184,0.18);">
+                <div style="font-weight:800;margin-bottom:10px;color:var(--cyan);">ルームに参加</div>
+                <div class="form-row">
+                  <label class="form-label" for="inputRoomId">ルームID</label>
+                  <input id="inputRoomId" class="input-field" placeholder="例: PT-4829">
+                </div>
+                <button class="btn btn-primary" id="btnJoinRoom" style="width:100%;margin-top:8px;">ルームに参加</button>
+              </div>
+            </div>
+
+            <div class="room-wait-box" id="roomWaitBox">
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <strong style="color:var(--cyan);" id="roomLobbyTitle">ルーム待機中</strong>
+                  <span class="ping-badge" id="pingBadgeRoom">📡 Ping: --ms</span>
+                </div>
+                <button class="btn btn-danger" id="btnLeaveRoom" style="padding:6px 12px;font-size:0.78rem;">退出</button>
+              </div>
+              <div class="room-code-bar">
+                <span style="font-size:0.78rem;color:var(--text-dim);">ルームID:</span>
+                <span class="room-code-pill" id="roomCodeDisplay">PT-0000</span>
+                <button class="btn btn-ghost" id="btnCopyRoomCode" style="padding:6px 12px;font-size:0.78rem;">📋 コピー</button>
+                <button class="btn btn-ghost" id="btnCopyInviteUrl" style="padding:6px 12px;font-size:0.78rem;">🔗 招待リンクをコピー</button>
+              </div>
+              <div id="roomStylePickRow" class="form-row">
+                <span class="form-label">自分のスタイルを選択</span>
+                <div class="seg-group" id="roomMyStyleGroup">
+                  <button class="seg-btn active" data-val="tetris">🟦 テトリス</button>
+                  <button class="seg-btn puyo" data-val="puyo">🟣 ぷよぷよ</button>
+                </div>
+              </div>
+              <div class="room-players">
+                <div class="room-player-card" id="roomP1Card">
+                  <div class="stamp-bubble" id="stampRoomSelf"></div>
+                  <div style="font-size:0.7rem;color:var(--text-dim);">YOU</div>
+                  <div style="font-weight:800;" id="roomP1Info">-</div>
+                </div>
+                <div class="room-player-card" id="roomP2Card">
+                  <div class="stamp-bubble opp" id="stampRoomOpp"></div>
+                  <div style="font-size:0.7rem;color:var(--text-dim);">OPPONENT</div>
+                  <div style="font-weight:800;" id="roomP2Info">接続待ち...</div>
+                </div>
+              </div>
+              <div class="stamp-bar" data-stamp-bar="room" style="margin-bottom:10px;"></div>
+              <button class="btn btn-green" id="btnRoomReady" style="width:100%;" disabled>READY（準備完了）</button>
+            </div>
+          </div>
+
+          <!-- TAB 3: TETRIS 99 BATTLE ROYALE -->
+          <div id="pane-br99" class="mode-pane">
+            <div class="record-banner active" id="br99RecordBanner" style="margin-bottom:10px;">
+              👑 最高順位: 未記録 / テト1（1位）回数: 0回
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;" id="br99LaunchGrid">
+              <div style="padding:12px;border-radius:12px;border:1px solid var(--border-glow);background:var(--card-sub-bg,rgba(15,23,42,0.55));display:flex;flex-direction:column;justify-content:space-between;gap:8px;">
+                <div>
+                  <div style="font-weight:900;font-size:0.9rem;color:var(--cyan);margin-bottom:4px;">🤖 ソロで99（即スタート）</div>
+                  <div style="font-size:0.74rem;color:var(--text-dim);">自分1人＋CPU 98体で即座にバトルロイヤル開始。Rキー即リトライ・ポーズ対応。</div>
+                </div>
+                <button class="btn btn-primary" id="btnBr99SoloStart" style="width:100%;padding:9px;font-size:0.84rem;">👑 ソロで99開始</button>
+              </div>
+
+              <div style="padding:12px;border-radius:12px;border:1px solid var(--border-glow);background:var(--card-sub-bg,rgba(15,23,42,0.55));display:flex;flex-direction:column;justify-content:space-between;gap:8px;">
+                <div>
+                  <div style="font-weight:900;font-size:0.9rem;color:var(--gold);margin-bottom:4px;">🌐 オンライン99（自動マッチ）</div>
+                  <div style="font-size:0.74rem;color:var(--text-dim);">公開ロビーへ自動参加。全員スタートまたは最大60秒後に残り枠をCPU補充して開始。</div>
+                </div>
+                <button class="btn btn-primary" id="btnBr99AutoMatch" style="width:100%;padding:9px;font-size:0.84rem;background:linear-gradient(135deg,#f59e0b,#ef4444);">🌐 自動マッチング</button>
+              </div>
+
+              <div style="padding:12px;border-radius:12px;border:1px solid var(--border-glow);background:var(--card-sub-bg,rgba(15,23,42,0.55));display:flex;flex-direction:column;justify-content:space-between;gap:8px;">
+                <div>
+                  <div style="font-weight:900;font-size:0.9rem;color:var(--pink);margin-bottom:4px;">🔑 フレンド99（ルーム）</div>
+                  <div style="font-size:0.74rem;color:var(--text-dim);margin-bottom:6px;">専用ID・招待URLでフレンドと99人戦！</div>
+                  <div style="display:flex;gap:6px;">
+                    <input type="text" class="input-field" id="inputBr99RoomId" placeholder="例: BR-1234" style="flex:1;padding:6px 8px;font-size:0.78rem;text-transform:uppercase;">
+                    <button class="btn btn-ghost" id="btnBr99JoinRoom" style="padding:6px 10px;font-size:0.78rem;">参加</button>
+                  </div>
+                </div>
+                <button class="btn btn-ghost" id="btnBr99CreateRoom" style="width:100%;padding:8px;font-size:0.82rem;border-color:var(--pink);color:var(--pink);">＋ フレンド99ルーム作成</button>
+              </div>
+            </div>
+
+            <!-- Online 99 Waiting Lobby -->
+            <div class="br99-wait-box" id="br99WaitBox">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                <div>
+                  <strong style="color:var(--gold);font-size:0.95rem;" id="br99LobbyTitle">👑 オンライン99 待機ロビー</strong>
+                  <span style="margin-left:8px;font-size:0.78rem;font-weight:800;color:var(--cyan);" id="br99CountSummary">参加人数: 1 / 99（残り98枠はCPU補充）</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span class="br99-hud-pill gold" id="br99TimerBadge">⏳ 自動開始まで: 60秒</span>
+                  <button class="btn btn-danger" id="btnBr99Leave" style="padding:5px 10px;font-size:0.76rem;">退出</button>
+                </div>
+              </div>
+              <div class="room-code-bar" id="br99RoomCodeBar" style="display:none;margin-top:8px;">
+                <span style="font-size:0.76rem;color:var(--text-dim);">ルームID:</span>
+                <span class="room-code-pill" id="br99RoomCodeDisplay">BR-0000</span>
+                <button class="btn btn-ghost" id="btnBr99CopyCode" style="padding:5px 10px;font-size:0.75rem;">📋 コピー</button>
+                <button class="btn btn-ghost" id="btnBr99CopyUrl" style="padding:5px 10px;font-size:0.75rem;">🔗 招待リンクをコピー</button>
+              </div>
+              <div class="br99-player-list" id="br99PlayerList"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px;">
+                <span style="font-size:0.74rem;color:var(--text-dim);" id="br99ReadyHint">全員がスタートを押すか、残り時間が0になると即座に99人で試合開始します。</span>
+                <button class="btn btn-primary" id="btnBr99Ready" style="padding:9px 22px;font-size:0.86rem;">▶ スタート（準備完了）</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 4: SOLO / CPU / SPECTATE -->
+          <div id="pane-solo" class="mode-pane">
+            <div class="form-row">
+              <span class="form-label">モード選択</span>
+              <div class="seg-group" id="soloTypeGroup">
+                <button class="seg-btn active" data-val="cpu">🤖 CPU対戦</button>
+                <button class="seg-btn" data-val="spectate">👀 CPU観戦 (AI vs AI)</button>
+                <button class="seg-btn" data-val="endless_tetris">🟦 とことんテトリス</button>
+                <button class="seg-btn puyo" data-val="endless_puyo">🟣 とことんぷよ(Undo付)</button>
+                <button class="seg-btn" data-val="endless_swap">🔄 とことんSWAP</button>
+                <button class="seg-btn" data-val="sprint40">⏱ 40ライン</button>
+                <button class="seg-btn" data-val="ultra2m">⚡ 2分間ウルトラ</button>
+                <button class="seg-btn" data-val="cheese">🧀 チーズレース</button>
+                <button class="seg-btn puyo" data-val="puyo_editor">🧪 ぷよ連鎖エディタ</button>
+                <button class="seg-btn" data-val="cpu_tower">🗼 CPUタワー (10F)</button>
+                <button class="seg-btn" data-val="daily_seed">📅 デイリーシード</button>
+                <button class="seg-btn puyo" data-val="puzzle_dojo">🧩 パズル道場 (20問)</button>
+                <button class="seg-btn" data-val="bigbang_solo">💥 ビッグバン練習（ソロ）</button>
+              </div>
+            </div>
+
+            <div class="form-row" id="bigbangSoloStyleRow" style="display:none;">
+              <span class="form-label">💥 ビッグバン練習スタイル（60秒間スコア＆連続クリアアタック）</span>
+              <div class="seg-group" id="bigbangSoloStyleGroup">
+                <button class="seg-btn active" data-val="tetris">🟦 テトリス（ラッキーアタック）</button>
+                <button class="seg-btn puyo" data-val="puyo">🟣 ぷよぷよ（フィーバー連鎖のタネ）</button>
+              </div>
+            </div>
+
+            <div class="form-row" id="towerConfigRow" style="display:none;">
+              <span class="form-label">🗼 CPUタワー挑戦スタイル（全10階層・連戦ボスラッシュ）</span>
+              <div class="seg-group" id="towerStyleGroup">
+                <button class="seg-btn active" data-val="tetris">🟦 テトリスで挑戦</button>
+                <button class="seg-btn puyo" data-val="puyo">🟣 ぷよぷよで挑戦</button>
+              </div>
+            </div>
+
+            <div class="record-banner" id="soloRecordBanner"></div>
+
+            <div class="form-row" id="cheeseConfigRow" style="display:none;">
+              <span class="form-label">🧀 チーズレース ライン数（テトリス専用・掘り下げ練習）</span>
+              <div class="seg-group" id="cheeseLinesGroup">
+                <button class="seg-btn active" data-val="10">10ライン（基本）</button>
+                <button class="seg-btn" data-val="20">20ライン（上級）</button>
+              </div>
+            </div>
+
+            <div class="form-row" id="soloPuyoColorRow">
+              <span class="form-label">🟣 ぷよぷよ色数（練習・対戦用）</span>
+              <div class="seg-group" id="soloPuyoColorGroup">
+                <button class="seg-btn" data-val="3">3色（大連鎖練習）</button>
+                <button class="seg-btn active" data-val="4">4色（標準）</button>
+                <button class="seg-btn puyo" data-val="5">5色（激辛・紫追加）</button>
+              </div>
+            </div>
+
+            <!-- CPU Battle Config -->
+            <div id="cpuConfigBox">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin-bottom:12px;">
+                <div>
+                  <span class="form-label">ルール</span>
+                  <div class="seg-group" id="cpuRuleGroup">
+                    <button class="seg-btn active" data-val="vs">VS</button>
+                    <button class="seg-btn" data-val="swap">SWAP</button>
+                    <button class="seg-btn" data-val="bigbang">💥 BIG BANG</button>
+                    <button class="seg-btn puyo" data-val="skill">⚡ SKILL</button>
+                  </div>
+                </div>
+                <div>
+                  <span class="form-label">先取本数</span>
+                  <div class="seg-group" id="cpuFtGroup">
+                    <button class="seg-btn" data-val="1">1本</button>
+                    <button class="seg-btn active" data-val="2">2本先取</button>
+                  </div>
+                </div>
+                <div id="cpuMyStyleWrap">
+                  <span class="form-label">自分</span>
+                  <div class="seg-group" id="cpuMyStyleGroup">
+                    <button class="seg-btn active" data-val="tetris">テトリス</button>
+                    <button class="seg-btn puyo" data-val="puyo">ぷよぷよ</button>
+                  </div>
+                </div>
+                <div id="cpuOppStyleWrap">
+                  <span class="form-label">CPU</span>
+                  <div class="seg-group" id="cpuOppStyleGroup">
+                    <button class="seg-btn puyo active" data-val="puyo">ぷよぷよ</button>
+                    <button class="seg-btn" data-val="tetris">テトリス</button>
+                  </div>
+                </div>
+              </div>
+              <div class="form-row">
+                <span class="form-label">CPU強さ</span>
+                <div class="seg-group" id="cpuDiffGroup">
+                  <button class="seg-btn" data-val="easy">EASY (R1300)</button>
+                  <button class="seg-btn active" data-val="normal">NORMAL (R1550)</button>
+                  <button class="seg-btn" data-val="hard">HARD (R1850)</button>
+                  <button class="seg-btn impossible" data-val="impossible">💀 IMPOSSIBLE (R2400 MASTER)</button>
+                </div>
+              </div>
+              <div class="form-row">
+                <span class="form-label">⚔️ おじゃま火力ハンデ（自分 / CPU）</span>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                  <div class="seg-group" id="cpuSelfAtkGroup">
+                    <button class="seg-btn" data-val="50">50%</button>
+                    <button class="seg-btn active" data-val="100">100%</button>
+                    <button class="seg-btn" data-val="150">150%</button>
+                    <button class="seg-btn" data-val="200">200%</button>
+                  </div>
+                  <span style="font-size:0.74rem;color:var(--text-dim);">vs</span>
+                  <div class="seg-group" id="cpuOppAtkGroup">
+                    <button class="seg-btn" data-val="50">50%</button>
+                    <button class="seg-btn active" data-val="100">100%</button>
+                    <button class="seg-btn" data-val="150">150%</button>
+                    <button class="seg-btn" data-val="200">200%</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- CPU vs CPU Spectate Config -->
+            <div id="spectateConfigBox" style="display:none;">
+              <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+                <div>
+                  <span class="form-label">ルール</span>
+                  <div class="seg-group" id="specRuleGroup">
+                    <button class="seg-btn active" data-val="vs">VS</button>
+                    <button class="seg-btn" data-val="swap">SWAP</button>
+                  </div>
+                </div>
+                <div>
+                  <span class="form-label">先取本数</span>
+                  <div class="seg-group" id="specFtGroup">
+                    <button class="seg-btn" data-val="1">1本</button>
+                    <button class="seg-btn active" data-val="2">2本先取</button>
+                  </div>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div style="padding:10px;border-radius:10px;background:rgba(7,10,20,0.6);border:1px solid rgba(56,189,248,0.25);">
+                  <div style="font-size:0.75rem;font-weight:800;color:var(--cyan);margin-bottom:6px;">左CPU (P1)</div>
+                  <div id="specLeftStyleWrap" class="form-row" style="margin-bottom:8px;">
+                    <div class="seg-group" id="specLeftStyleGroup">
+                      <button class="seg-btn active" data-val="tetris">テトリス</button>
+                      <button class="seg-btn puyo" data-val="puyo">ぷよぷよ</button>
+                    </div>
+                  </div>
+                  <div class="seg-group" id="specLeftDiffGroup">
+                    <button class="seg-btn" data-val="easy">EASY</button>
+                    <button class="seg-btn" data-val="normal">NORM</button>
+                    <button class="seg-btn" data-val="hard">HARD</button>
+                    <button class="seg-btn impossible active" data-val="impossible">IMP</button>
+                  </div>
+                </div>
+                <div style="padding:10px;border-radius:10px;background:rgba(7,10,20,0.6);border:1px solid rgba(255,46,147,0.28);">
+                  <div style="font-size:0.75rem;font-weight:800;color:var(--pink);margin-bottom:6px;">右CPU (P2)</div>
+                  <div id="specRightStyleWrap" class="form-row" style="margin-bottom:8px;">
+                    <div class="seg-group" id="specRightStyleGroup">
+                      <button class="seg-btn" data-val="tetris">テトリス</button>
+                      <button class="seg-btn puyo active" data-val="puyo">ぷよぷよ</button>
+                    </div>
+                  </div>
+                  <div class="seg-group" id="specRightDiffGroup">
+                    <button class="seg-btn" data-val="easy">EASY</button>
+                    <button class="seg-btn" data-val="normal">NORM</button>
+                    <button class="seg-btn" data-val="hard">HARD</button>
+                    <button class="seg-btn impossible active" data-val="impossible">IMP</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button class="btn btn-green" id="btnStartSolo" style="width:100%;padding:13px;font-size:1rem;">
+              ▶ ゲームスタート
+            </button>
+          </div>
+        </div>
+
+        <!-- Always-visible Key Guide (Dynamically synced with Key Config) -->
+        <div class="key-guide">
+          <div style="font-size:0.78rem;font-weight:800;color:var(--cyan);margin-bottom:6px;">⌨️ キー操作ガイド（⚙️設定から変更・ゲームパッド対応）</div>
+          <div class="key-guide-grid" id="lobbyKeyGuide"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BATTLE SCREEN -->
+  <section id="screenBattle" class="screen">
+    <div class="battle-header">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span id="battleModeTag" class="rank-badge rank-PLATINUM">VS RANKED</span>
+        <span id="battleEloInfo" style="font-size:0.8rem;color:var(--text-dim);font-weight:700;"></span>
+        <span class="ping-badge" id="pingBadgeBattle">📡 Ping: --ms</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div id="swapBanner" class="swap-banner">
+          <span>🔄 NEXT SWAP</span>
+          <span id="swapTimerVal" style="font-family:monospace;font-size:1.1rem;">25.0s</span>
+        </div>
+        <div id="challengeBanner" class="challenge-banner"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="pill-btn" id="btnZeroGrav" style="display:none;border-color:rgba(168,85,247,0.55);color:#d8b4fe;">🪶 重力: ON</button>
+        <button class="pill-btn" id="btnPuyoUndo" style="display:none;border-color:rgba(255,46,147,0.55);color:#f9a8d4;">↩ 1手戻す (0)</button>
+        <button class="pill-btn" id="btnRetryGame" style="display:none;border-color:rgba(0,240,255,0.45);color:#7dd3fc;">🔄 リトライ</button>
+        <button class="pill-btn" id="btnPauseGame">⏸ ポーズ</button>
+        <button class="pill-btn" id="btnQuitBattle" style="border-color:rgba(239,68,68,0.5);color:#fca5a5;">✕ 終了</button>
+      </div>
+    </div>
+
+    <!-- SPECIAL MODE HUD: BIG BANG & SKILL BATTLE -->
+    <div class="special-mode-hud" id="specialModeHud">
+      <!-- Big Bang HUD -->
+      <div class="bb-hud-wrap" id="bbHudWrap" style="display:none;">
+        <div class="bb-hud-side">
+          <div class="bb-hud-row">
+            <span class="bb-hp-label" id="bbSelfHpTxt">HP 1000 / 1000</span>
+            <span class="bb-charge-pill" id="bbSelfChargeTxt">💥 0</span>
+          </div>
+          <div class="hp-bar-track"><div class="hp-bar-fill self" id="bbSelfHpFill" style="width:100%;"></div></div>
+        </div>
+        <div class="bb-timer-box">
+          <div style="font-size:0.62rem;color:var(--text-dim);font-weight:800;">CHARGE TIME</div>
+          <div class="bb-timer-val" id="bbTimerVal">60.0s</div>
+        </div>
+        <div class="bb-hud-side opp" id="bbOppHudSide">
+          <div class="bb-hud-row">
+            <span class="bb-charge-pill opp" id="bbOppChargeTxt">💥 0</span>
+            <span class="bb-hp-label" id="bbOppHpTxt">HP 1000 / 1000</span>
+          </div>
+          <div class="hp-bar-track"><div class="hp-bar-fill opp" id="bbOppHpFill" style="width:100%;"></div></div>
+        </div>
+      </div>
+
+      <!-- Skill Battle HUD -->
+      <div class="sk-hud-wrap" id="skHudWrap" style="display:none;">
+        <div class="sk-gauges-row">
+          <div class="sk-gauge-side">
+            <div class="sk-bar-line">
+              <span class="sk-bar-txt" id="skSelfHpTxt">HP 1000/1000</span>
+              <div class="hp-bar-track"><div class="hp-bar-fill self" id="skSelfHpFill" style="width:100%;"></div></div>
+            </div>
+            <div class="sk-bar-line">
+              <span class="sk-bar-txt mp" id="skSelfMpTxt">MP 30/100</span>
+              <div class="mp-bar-track"><div class="mp-bar-fill" id="skSelfMpFill" style="width:30%;"></div></div>
+            </div>
+          </div>
+          <div class="sk-gauge-side opp">
+            <div class="sk-bar-line">
+              <span class="sk-bar-txt" id="skOppHpTxt">HP 1000/1000</span>
+              <div class="hp-bar-track"><div class="hp-bar-fill opp" id="skOppHpFill" style="width:100%;"></div></div>
+            </div>
+            <div class="sk-bar-line">
+              <span class="sk-bar-txt mp" id="skOppMpTxt">MP 30/100</span>
+              <div class="mp-bar-track"><div class="mp-bar-fill" id="skOppMpFill" style="width:30%;"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="sk-btn-bar" id="skBtnBar">
+          <button type="button" class="sk-act-btn" id="skBtn0"></button>
+          <button type="button" class="sk-act-btn" id="skBtn1"></button>
+          <button type="button" class="sk-act-btn" id="skBtn2"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Skill Cut-in Banner -->
+    <div class="skill-cutin-banner" id="skillCutinBanner"></div>
+
+    <div class="arena-stage" id="arenaStage">
+      <!-- Self / Left Zone -->
+      <div class="player-zone" id="selfZone">
+        <div class="stamp-bubble" id="stampBattleSelf"></div>
+        <div class="player-meta">
+          <div class="player-name-row">
+            <span class="player-name" id="selfNameHud">PLAYER</span>
+            <span id="selfPidHud" class="pid-badge" style="display:none;"></span>
+            <span id="selfTitleHud" class="title-badge"></span>
+            <span id="selfWinDots" class="win-dots"></span>
+            <span id="selfRankHud" class="rank-badge rank-GOLD">GOLD</span>
+            <span style="font-size:0.76rem;color:var(--text-dim);" id="selfRatingHud">1500</span>
+            <span id="selfStyleHud" class="style-pill">TETRIS</span>
+            <span id="selfAtkBadge" class="atk-badge"></span>
+          </div>
+          <div class="live-metrics">
+            <span class="metric-pps" id="selfPpsHud">PPS 0.00</span>
+            <span class="metric-apm" id="selfApmHud">APM 0.0</span>
+            <span class="score-readout" id="selfScoreHud">0</span>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="selfCanvas" class="game-canvas" width="540" height="580"></canvas>
+        </div>
+      </div>
+
+      <!-- Opponent / Right Zone -->
+      <div class="player-zone opp-zone" id="oppZone">
+        <div class="stamp-bubble opp" id="stampBattleOpp"></div>
+        <div class="player-meta">
+          <div class="player-name-row">
+            <span class="player-name" id="oppNameHud">OPPONENT</span>
+            <span id="oppPidHud" class="pid-badge" style="display:none;"></span>
+            <span id="oppTitleHud" class="title-badge"></span>
+            <span id="oppWinDots" class="win-dots"></span>
+            <span id="oppRankHud" class="rank-badge rank-GOLD">GOLD</span>
+            <span style="font-size:0.76rem;color:var(--text-dim);" id="oppRatingHud">1500</span>
+            <span id="oppStyleHud" class="style-pill puyo">PUYO</span>
+            <span id="oppAtkBadge" class="atk-badge"></span>
+          </div>
+          <div class="live-metrics">
+            <span class="metric-pps" id="oppPpsHud">PPS 0.00</span>
+            <span class="metric-apm" id="oppApmHud">APM 0.0</span>
+            <span class="score-readout" id="oppScoreHud">0</span>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="oppCanvas" class="game-canvas" width="540" height="580"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Stamps in Battle -->
+    <div class="stamp-bar" id="battleStampBar" data-stamp-bar="battle" style="justify-content:center;margin-top:10px;"></div>
+
+    <!-- Mobile Pro Touch Pad (2-Group Gamepad Layout) -->
+    <div class="touch-pad" id="touchPad">
+      <div class="touch-group">
+        <button class="touch-btn" data-act="left">◀</button>
+        <button class="touch-btn" data-act="down">▼</button>
+        <button class="touch-btn" data-act="right">▶</button>
+      </div>
+      <div class="touch-group-right">
+        <button class="touch-btn act-pink" data-act="ccw">↺</button>
+        <button class="touch-btn act-pink" data-act="cw">↻</button>
+        <button class="touch-btn act-pink" id="touchBtnRot180" data-act="rot180">180°</button>
+        <button class="touch-btn" id="touchBtnHard" data-act="hard">⤓</button>
+        <button class="touch-btn" id="touchBtnHold" data-act="hold">HOLD</button>
+      </div>
+    </div>
+
+    <!-- Persistent Compact Key Guide in Battle -->
+    <div class="key-guide" id="battleKeyGuideWrap" style="margin-top:6px;padding:6px 12px;">
+      <div class="key-guide-grid" id="battleKeyGuide"></div>
+    </div>
+  </section>
+
+  <!-- TETRIS 99 BATTLE SCREEN -->
+  <section id="screenBr99" class="screen">
+    <div class="br99-screen-wrap">
+      <div class="battle-header">
+        <div class="br99-hud-row">
+          <span class="rank-badge rank-MASTER">👑 TETRIS 99</span>
+          <span class="br99-hud-pill" id="br99AliveBadge">残り: 99 / 99</span>
+          <span class="br99-hud-pill" id="br99HumanBadge">👤 実プレイヤー: 1人</span>
+          <span class="br99-hud-pill gold" id="br99KoBadge">💥 K.O.: 0</span>
+          <span class="br99-hud-pill gold" id="br99BadgePill">🏅 Lv.0 (+0%)</span>
+          <span class="br99-hud-pill" id="br99PhaseBadge">SPEED: 1x</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button class="btn btn-ghost" id="btnBr99Retry" style="padding:5px 10px;font-size:0.76rem;">🔄 リトライ</button>
+          <button class="btn btn-ghost" id="btnBr99Pause" style="padding:5px 10px;font-size:0.76rem;">⏸ ポーズ</button>
+          <button class="btn btn-danger" id="btnBr99Exit" style="padding:5px 10px;font-size:0.76rem;">ロビーへ</button>
+        </div>
+      </div>
+
+      <div class="br99-stage">
+        <div class="br99-side-panel left">
+          <canvas id="br99LeftCanvas" class="br99-mini-canvas" width="420" height="560"></canvas>
+        </div>
+
+        <div class="br99-center-col">
+          <div class="br99-self-wrap" id="br99SelfZone">
+            <canvas id="br99SelfCanvas" class="br99-self-canvas" width="540" height="580"></canvas>
+            <div class="br99-callout" id="br99Callout">TOP 50!</div>
+          </div>
+          <div class="br99-tactics" id="br99TacticBar">
+            <button class="br99-tactic-btn active" data-tactic="random">1: ランダム</button>
+            <button class="br99-tactic-btn" data-tactic="ko">2: とどめ</button>
+            <button class="br99-tactic-btn" data-tactic="badges">3: バッジ</button>
+            <button class="br99-tactic-btn t-counter" data-tactic="attackers" id="br99CounterBtn">4: カウンター (0)</button>
+          </div>
+        </div>
+
+        <div class="br99-side-panel right">
+          <canvas id="br99RightCanvas" class="br99-mini-canvas" width="420" height="560"></canvas>
+        </div>
+      </div>
+
+      <!-- Mobile Touch Pad for TETRIS 99 -->
+      <div class="touch-pad" id="br99TouchPad">
+        <div class="touch-group">
+          <button class="touch-btn" data-act="left">◀</button>
+          <button class="touch-btn" data-act="down">▼</button>
+          <button class="touch-btn" data-act="right">▶</button>
+        </div>
+        <div class="touch-group-right">
+          <button class="touch-btn act-pink" data-act="ccw">↺</button>
+          <button class="touch-btn act-pink" data-act="cw">↻</button>
+          <button class="touch-btn act-pink" data-act="rot180">180°</button>
+          <button class="touch-btn" data-act="hard">⤓</button>
+          <button class="touch-btn" data-act="hold">HOLD</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PUYO CHAIN RESEARCH EDITOR SCREEN -->
+  <section id="screenEditor" class="screen">
+    <div class="battle-header">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span class="rank-badge rank-MASTER">🧪 ぷよ連鎖エディタ</span>
+        <span id="edResultBadge" style="font-family:monospace;font-size:0.84rem;font-weight:800;color:#fde047;">連鎖: 0 | スコア: 0 | おじゃま: 0</span>
+      </div>
+      <button class="pill-btn" id="btnEdBackLobby" style="border-color:rgba(239,68,68,0.5);color:#fca5a5;">✕ ロビーへ戻る</button>
+    </div>
+
+    <div class="editor-layout">
+      <div class="panel editor-canvas-card">
+        <canvas id="editorCanvas" class="game-canvas" width="380" height="530"></canvas>
+      </div>
+
+      <div class="panel" style="display:flex;flex-direction:column;justify-content:space-between;overflow-y:auto;">
+        <div>
+          <div class="panel-title" style="margin-bottom:8px;">🎨 ぷよパレット（クリック＆ドラッグ配置）</div>
+          <div class="palette-grid" id="editorPalette">
+            <button class="pal-btn active" data-pcol="1"><span class="pal-dot" style="background:#ef4444;"></span>赤</button>
+            <button class="pal-btn" data-pcol="2"><span class="pal-dot" style="background:#3b82f6;"></span>青</button>
+            <button class="pal-btn" data-pcol="3"><span class="pal-dot" style="background:#22c55e;"></span>緑</button>
+            <button class="pal-btn" data-pcol="4"><span class="pal-dot" style="background:#eab308;"></span>黄</button>
+            <button class="pal-btn" data-pcol="5"><span class="pal-dot" style="background:#a855f7;"></span>紫</button>
+            <button class="pal-btn" data-pcol="9"><span class="pal-dot" style="background:#cbd5e1;"></span>おじゃま</button>
+            <button class="pal-btn" data-pcol="0" style="grid-column:span 2;"><span class="pal-dot" style="background:#0f172a;border-style:dashed;"></span>消しゴム</button>
+          </div>
+
+          <div class="panel-title" style="margin-bottom:8px;">🔥 発火テスト＆研究</div>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+            <button class="btn btn-pink" id="btnEdFire" style="width:100%;">▶ 発火テスト</button>
+            <button class="btn btn-primary" id="btnEdRestore" style="width:100%;">↩ 編集に戻る（配置復元）</button>
+            <button class="btn btn-danger" id="btnEdClear" style="width:100%;padding:8px;font-size:0.82rem;">🗑 全消去</button>
+          </div>
+
+          <div class="panel-title" style="margin-bottom:8px;">📐 サンプル配置プリセット</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <button class="btn btn-ghost" id="btnEdPresetStair" style="width:100%;padding:8px;font-size:0.8rem;">📐 階段6連鎖（即発火）</button>
+            <button class="btn btn-ghost" id="btnEdPresetGtr" style="width:100%;padding:8px;font-size:0.8rem;">📐 GTR折り返し基礎（5連鎖）</button>
+          </div>
+        </div>
+        <div style="font-size:0.72rem;color:var(--text-dim);margin-top:10px;line-height:1.4;">
+          盤面をなぞって自由に配置し、「▶ 発火テスト」でちぎり落下＆連鎖シミュレートを実行できます。現在のスキン・色覚サポート設定がそのまま反映されます。
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- SETTINGS OVERLAY (HANDLING / KEY CONFIG / VOLUME) -->
+<div class="overlay" id="overlayHandling">
+  <div class="result-card" style="max-width:480px;">
+    <div class="panel-title" style="justify-content:center;font-size:1.05rem;">⚙️ 設定（ハンドリング / キー / 音量 / データ）</div>
+
+    <div class="set-tabs">
+      <button class="set-tab active" data-settab="handling">⚡ 操作感</button>
+      <button class="set-tab" data-settab="keys">⌨️ キー</button>
+      <button class="set-tab" data-settab="audio">🔊 音量</button>
+      <button class="set-tab" data-settab="data">💾 データ</button>
+    </div>
+
+    <!-- Pane 1: Handling -->
+    <div id="setpane-handling" class="set-pane active">
+      <div class="form-row">
+        <span class="form-label">プリセット</span>
+        <div class="seg-group" style="width:100%;justify-content:space-between;">
+          <button class="seg-btn" id="presetStd">標準 (150/35/20x)</button>
+          <button class="seg-btn" id="presetFast">高速 (110/10/40x)</button>
+          <button class="seg-btn" id="presetUltra">極速 (85/0/40x)</button>
+        </div>
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-head">
+          <span>DAS（横移動タメ時間）</span>
+          <span class="slider-val" id="valDas">150 ms</span>
+        </div>
+        <input type="range" id="rangeDas" min="50" max="250" step="5" value="150">
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-head">
+          <span>ARR（連続横移動間隔 ※0ms=瞬間移動）</span>
+          <span class="slider-val" id="valArr">35 ms</span>
+        </div>
+        <input type="range" id="rangeArr" min="0" max="80" step="5" value="35">
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-head">
+          <span>ソフトドロップ速度（SDF ※テトリス専用・ぷよは10x固定）</span>
+          <span class="slider-val" id="valSdf">20x</span>
+        </div>
+        <div class="seg-group" id="sdfGroup" style="width:100%;justify-content:space-between;">
+          <button class="seg-btn" data-val="5">5x</button>
+          <button class="seg-btn" data-val="10">10x</button>
+          <button class="seg-btn active" data-val="20">20x</button>
+          <button class="seg-btn" data-val="40">40x</button>
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.18);">
+        <span class="form-label">👁 色覚サポート（ぷよ記号＆視認性強化）</span>
+        <div class="seg-group" id="cbGroup">
+          <button class="seg-btn active" data-val="0">OFF</button>
+          <button class="seg-btn" data-val="1">ON（記号＋高コントラスト）</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pane 2: Key Config -->
+    <div id="setpane-keys" class="set-pane">
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:8px;">
+        変更したい操作をクリックしてから、割り当てたいキーを押してください（ゲームパッド接続時は自動対応）。
+      </div>
+      <div class="keybind-list" id="keybindList"></div>
+      <button class="btn btn-ghost" id="btnResetKeys" style="width:100%;padding:8px;font-size:0.82rem;margin-bottom:8px;">↩ デフォルトに戻す</button>
+    </div>
+
+    <!-- Pane 3: Audio Volume -->
+    <div id="setpane-audio" class="set-pane">
+      <div class="slider-row">
+        <div class="slider-head">
+          <span>🎵 BGM 音量</span>
+          <span class="slider-val" id="valBgmVol">70%</span>
+        </div>
+        <input type="range" id="rangeBgmVol" min="0" max="100" step="5" value="70">
+      </div>
+      <div class="slider-row">
+        <div class="slider-head">
+          <span>🔊 SE（効果音）音量</span>
+          <span class="slider-val" id="valSeVol">80%</span>
+        </div>
+        <input type="range" id="rangeSeVol" min="0" max="100" step="5" value="80">
+      </div>
+      <div class="form-row" style="margin-top:10px;">
+        <span class="form-label">🎼 BGM選曲モード</span>
+        <div class="seg-group" id="bgmModeGroup">
+          <button class="seg-btn active" data-val="auto">自動（スタイル連動）</button>
+          <button class="seg-btn" data-val="tetris">テトリス曲固定</button>
+          <button class="seg-btn puyo" data-val="puyo">ぷよ曲固定</button>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,0.18);">
+        <span class="form-label">🎧 サウンドテスト（BGM / SE 試聴）</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+          <button class="btn btn-ghost" id="btnTestBgmTetris" style="padding:6px 10px;font-size:0.78rem;">▶ テトリスBGM試聴</button>
+          <button class="btn btn-ghost" id="btnTestBgmPuyo" style="padding:6px 10px;font-size:0.78rem;">▶ ぷよBGM試聴</button>
+          <button class="btn btn-danger" id="btnTestBgmStop" style="padding:6px 10px;font-size:0.78rem;">⏹ 停止</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-ghost" id="btnTestSeTetris" style="padding:5px 10px;font-size:0.75rem;">🟦 テトリスSE</button>
+          <button class="btn btn-ghost" id="btnTestSeChain" style="padding:5px 10px;font-size:0.75rem;">🟣 連鎖SE</button>
+          <button class="btn btn-ghost" id="btnTestSeAllClear" style="padding:5px 10px;font-size:0.75rem;">✨ 全消しSE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pane 4: Replay Data -->
+    <div id="setpane-data" class="set-pane">
+      <div class="form-row" style="margin-top:4px;margin-bottom:4px;">
+        <span class="form-label">🎬 リプレイファイル再生</span>
+        <input type="file" id="replayFileInput" accept=".json,application/json" style="display:none;">
+        <button class="btn btn-primary" id="btnLoadReplayFile" style="width:100%;padding:8px;font-size:0.82rem;">📂 リプレイ読込 (.json)</button>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="btnCloseHandling" style="width:100%;margin-top:6px;">保存して閉じる</button>
+  </div>
+</div>
+
+<!-- SHOP OVERLAY (THEMES & BLOCK/PUYO SKINS) -->
+<div class="overlay" id="overlayShop">
+  <div class="result-card" style="max-width:660px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+      <div class="panel-title" style="margin-bottom:0;font-size:1.05rem;">🛒 ショップ & 着せ替え</div>
+      <span class="coin-pill" id="shopCoinPill">🪙 200</span>
+    </div>
+    <div class="set-tabs shop-tabs-4" style="grid-template-columns:repeat(4,1fr);margin-bottom:8px;">
+      <button class="set-tab active" data-shoptab="themes">🖼 テーマ</button>
+      <button class="set-tab" data-shoptab="skins">🧩 スキン</button>
+      <button class="set-tab" data-shoptab="effects">✨ エフェクト</button>
+      <button class="set-tab" data-shoptab="sepacks">🔊 SEパック</button>
+    </div>
+    <div class="shop-grid" id="shopGrid"></div>
+    <button class="btn btn-primary" id="btnCloseShop" style="width:100%;">閉じる</button>
+  </div>
+</div>
+
+<!-- REAL-PLAYERS LEADERBOARD OVERLAY -->
+<div class="overlay" id="overlayLeaderboard">
+  <div class="result-card" style="max-width:640px;padding:18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+      <div class="panel-title" style="margin-bottom:0;font-size:1.02rem;">🏆 リーダーボード（実プレイヤー限定）</div>
+      <span style="font-size:0.72rem;color:var(--text-dim);font-weight:700;" id="lbCountText">登録: 1人</span>
+    </div>
+    <div class="set-tabs lb-tabs-7" style="grid-template-columns:repeat(7,1fr);margin-bottom:8px;">
+      <button class="set-tab active" data-lbtab="rating">🏆 レート</button>
+      <button class="set-tab" data-lbtab="skill">⚡ スキルレート</button>
+      <button class="set-tab" data-lbtab="sprint">⏱ 40L</button>
+      <button class="set-tab" data-lbtab="ultra">🔥 ウルトラ</button>
+      <button class="set-tab" data-lbtab="cheese">🧀 チーズ</button>
+      <button class="set-tab" data-lbtab="br99">👑 99</button>
+      <button class="set-tab" data-lbtab="chain">💥 最大連鎖</button>
+    </div>
+    <div class="lb-list" id="lbList"></div>
+    <div id="lbSourceNote" style="font-size:0.72rem;color:var(--text-dim);margin:6px 0 8px;">
+      オンライン対戦（ランクマッチ・ルーム対戦）を行うと、対戦したプレイヤーの記録が自動で追加されます。
+    </div>
+    <div class="lb-summary" id="lbSummaryBar">あなたの順位: #1 / 1</div>
+    <button class="btn btn-primary" id="btnCloseLeaderboard" style="width:100%;">閉じる</button>
+  </div>
+</div>
+
+<!-- ACHIEVEMENTS & DAILY MISSIONS OVERLAY -->
+<div class="overlay" id="overlayAch">
+  <div class="result-card" style="max-width:600px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+      <div class="panel-title" style="margin-bottom:0;font-size:1.05rem;">🏅 実績・称号 & デイリーミッション</div>
+      <span class="coin-pill" id="achCoinPill">🪙 200</span>
+    </div>
+    <div class="set-tabs" style="grid-template-columns:repeat(3,1fr);margin-bottom:8px;">
+      <button class="set-tab active" data-achtab="ach">🏅 実績 & 称号</button>
+      <button class="set-tab" data-achtab="daily">📅 デイリー</button>
+      <button class="set-tab" data-achtab="weekly">📆 ウィークリー</button>
+    </div>
+    <div class="ach-list" id="achModalList"></div>
+    <button class="btn btn-primary" id="btnCloseAch" style="width:100%;">閉じる</button>
+  </div>
+</div>
+
+<!-- VS MATCHUP OVERLAY -->
+<div class="overlay" id="overlayVS">
+  <div class="vs-card">
+    <div style="font-size:0.82rem;font-weight:800;letter-spacing:0.15em;color:var(--cyan);" id="vsModeLabel">RANKED MATCH — VS</div>
+    <div class="vs-split">
+      <div class="vs-side">
+        <div style="font-size:0.72rem;color:var(--cyan);font-weight:800;" id="vsP1Tag">PLAYER 1 (YOU)</div>
+        <div style="font-size:1.45rem;font-weight:900;margin:4px 0;" id="vsP1Name">PLAYER</div>
+        <div style="display:flex;gap:5px;justify-content:center;align-items:center;flex-wrap:wrap;">
+          <span id="vsP1Pid" class="pid-badge" style="display:none;"></span>
+          <span id="vsP1Title" class="title-badge"></span>
+          <div id="vsP1Rank" class="rank-badge rank-GOLD">GOLD</div>
+        </div>
+        <div style="font-size:1.15rem;font-weight:800;margin-top:6px;" id="vsP1Rating">R 1500</div>
+        <div style="margin-top:6px;"><span id="vsP1Style" class="style-pill">TETRIS</span></div>
+      </div>
+      <div class="vs-emblem">VS</div>
+      <div class="vs-side right">
+        <div style="font-size:0.72rem;color:var(--pink);font-weight:800;" id="vsP2Tag">PLAYER 2</div>
+        <div style="font-size:1.45rem;font-weight:900;margin:4px 0;" id="vsP2Name">RIVAL</div>
+        <div style="display:flex;gap:5px;justify-content:center;align-items:center;flex-wrap:wrap;">
+          <span id="vsP2Pid" class="pid-badge" style="display:none;"></span>
+          <span id="vsP2Title" class="title-badge"></span>
+          <div id="vsP2Rank" class="rank-badge rank-PLATINUM">PLATINUM</div>
+        </div>
+        <div style="font-size:1.15rem;font-weight:800;margin-top:6px;" id="vsP2Rating">R 1680</div>
+        <div style="margin-top:6px;"><span id="vsP2Style" class="style-pill puyo">PUYO</span></div>
+      </div>
+    </div>
+    <div class="vs-elo-preview" id="vsEloPreview">
+      <span id="vsDiffText">相手レート差 +180</span>
+      <span style="color:#4ade80;" id="vsWinDelta">WIN: +24</span>
+      <span style="color:#f87171;" id="vsLoseDelta">LOSE: -8</span>
+    </div>
+  </div>
+</div>
+
+<!-- ROUND INTERMISSION OVERLAY (FT2) -->
+<div class="overlay" id="overlayRound" style="pointer-events:none;">
+  <div class="result-card" style="max-width:420px;">
+    <div class="result-title win" id="roundTitle" style="font-size:2rem;">ROUND 1 WIN!</div>
+    <div style="font-size:1.4rem;font-weight:900;font-family:monospace;color:var(--gold);margin:8px 0;" id="roundScoreText">1 - 0</div>
+    <div style="font-size:0.84rem;color:var(--text-dim);" id="roundSubText">次のラウンドへ進みます...</div>
+  </div>
+</div>
+
+<!-- COUNTDOWN OVERLAY -->
+<div class="overlay" id="overlayCountdown" style="background:rgba(4,6,14,0.45);backdrop-filter:none;pointer-events:none;">
+  <div class="countdown-num" id="countdownText">3</div>
+</div>
+
+<!-- PAUSE OVERLAY -->
+<div class="overlay" id="overlayPause">
+  <div class="result-card" style="max-width:360px;">
+    <div class="result-title" style="color:var(--cyan);font-size:1.8rem;">PAUSED</div>
+    <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:18px;">ゲームを一時停止中です</p>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button class="btn btn-primary" id="btnResumePause">▶ 再開する</button>
+      <button class="btn btn-pink" id="btnRetryFromPause">🔄 最初からリトライ</button>
+      <button class="btn btn-ghost" id="btnQuitFromPause">ロビーへ戻る</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESULT OVERLAY -->
+<div class="overlay" id="overlayResult">
+  <div class="result-card">
+    <div class="stamp-bubble opp" id="stampResultOpp"></div>
+    <div class="result-title win" id="resTitle">VICTORY!</div>
+    <div style="font-size:0.84rem;color:var(--text-dim);margin-bottom:6px;" id="resSub">対戦終了</div>
+    <div id="resSeedBadge" style="display:none;font-size:0.74rem;font-weight:800;color:var(--cyan);margin-bottom:6px;"></div>
+    <div id="resSpecialBadges"></div>
+
+    <div class="result-rating-box" id="resRatingBox">
+      <div style="font-size:0.72rem;color:var(--text-dim);margin-bottom:2px;">RATING UPDATE</div>
+      <div class="result-rating-num" id="resRatingNum">1500</div>
+      <div style="margin-top:2px;font-weight:800;font-size:0.95rem;" id="resRatingDelta">+16</div>
+      <div style="margin-top:6px;"><span id="resRankBadge" class="rank-badge rank-GOLD">GOLD</span></div>
+    </div>
+
+    <div class="res-stats-grid" id="resStatsGrid"></div>
+    <div style="font-size:0.78rem;color:var(--text-dim);margin-bottom:10px;" id="resStatsSummary"></div>
+    <div class="stamp-bar" id="resultStampBar" data-stamp-bar="result" style="justify-content:center;margin-bottom:12px;"></div>
+
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:8px;">
+      <button class="btn btn-ghost" id="btnPlayReplay" style="padding:7px 12px;font-size:0.8rem;">▶ リプレイ再生</button>
+      <button class="btn btn-ghost" id="btnSaveReplay" style="padding:7px 12px;font-size:0.8rem;">💾 リプレイ保存 (.json)</button>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+      <button class="btn btn-green" id="btnNextTowerFloor" style="display:none;">🗼 次の階層へ進む</button>
+      <button class="btn btn-primary" id="btnRematch">🔄 もう一戦（再戦）</button>
+      <button class="btn btn-ghost" id="btnBackLobby">🏠 ロビーへ戻る</button>
+    </div>
+    <div style="font-size:0.78rem;color:var(--cyan);margin-top:10px;min-height:18px;" id="resRematchStatus"></div>
+  </div>
+</div>
+
+<!-- REPLAY PLAYER OVERLAY -->
+<div class="overlay" id="overlayReplay">
+  <div class="result-card" style="max-width:860px;padding:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+      <div>
+        <strong style="color:var(--cyan);font-size:0.98rem;">🎬 REPLAY PLAYER</strong>
+        <span id="repMetaText" style="font-size:0.76rem;color:var(--text-dim);margin-left:8px;"></span>
+      </div>
+      <button class="pill-btn" id="btnCloseReplay">✕ 閉じる</button>
+    </div>
+    <div class="rep-stage" id="repStage">
+      <canvas id="repSelfCanvas" width="540" height="580"></canvas>
+      <canvas id="repOppCanvas" width="540" height="580"></canvas>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin:8px 0;">
+      <input type="range" id="repSeek" min="0" max="0" value="0" style="flex:1;">
+      <span id="repTimeLabel" style="font-family:monospace;font-size:0.78rem;color:var(--cyan);min-width:96px;text-align:right;">00:00 / 00:00</span>
+    </div>
+    <div style="display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="btnRepTogglePlay" style="padding:7px 16px;font-size:0.82rem;">⏸ 一時停止</button>
+      <div class="seg-group" id="repSpeedGroup">
+        <button class="seg-btn" data-val="0.5">0.5x</button>
+        <button class="seg-btn active" data-val="1">1x</button>
+        <button class="seg-btn" data-val="2">2x</button>
+        <button class="seg-btn" data-val="4">4x</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ACCOUNT AUTH & CLOUD SYNC OVERLAY -->
+<div class="overlay" id="overlayAuth">
+  <div class="result-card" style="max-width:440px;padding:20px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+      <div class="panel-title" style="margin-bottom:0;font-size:1rem;">👤 アカウント & クラウドセーブ</div>
+      <button class="pill-btn" id="btnCloseAuth" style="padding:4px 10px;">✕</button>
+    </div>
+
+    <div id="authUnconfiguredBanner" style="display:none;padding:8px 10px;border-radius:8px;margin-bottom:10px;font-size:0.74rem;font-weight:700;background:rgba(245,158,11,0.16);border:1px solid rgba(245,158,11,0.45);color:var(--gold);text-align:left;">
+      ⚠ Firebase設定が未入力のためゲスト（ローカル）モードで動作中です。コード内の <code>FIREBASE_CONFIG</code> を設定するとクラウド保存・全国ランキングが有効になります。
+    </div>
+
+    <!-- Logged Out View -->
+    <div id="authLoggedOutView">
+      <div class="set-tabs" style="grid-template-columns:repeat(2,1fr);margin-bottom:10px;">
+        <button class="set-tab active" data-authtab="login" id="authTabLogin">🔑 ログイン</button>
+        <button class="set-tab" data-authtab="register" id="authTabRegister">✨ 新規登録</button>
+      </div>
+
+      <div class="auth-box">
+        <div style="font-size:0.76rem;font-weight:800;color:var(--cyan);margin-bottom:8px;" id="authFormHeading">ID＋パスワードでログイン（メール不要）</div>
+        <div class="form-row" style="margin-bottom:8px;">
+          <label class="form-label" for="authUserId">ユーザーID（半角英数字・_ 3〜20文字）</label>
+          <input id="authUserId" class="input-field" maxlength="20" autocomplete="username" placeholder="例: puyo_master99">
+        </div>
+        <div class="form-row" style="margin-bottom:6px;">
+          <label class="form-label" for="authPassword">パスワード（6文字以上）</label>
+          <input id="authPassword" type="password" class="input-field" maxlength="64" autocomplete="current-password" placeholder="6文字以上のパスワード">
+        </div>
+        <div class="auth-err" id="authErrorMsg"></div>
+        <button class="btn btn-primary" id="btnAuthSubmit" style="width:100%;padding:10px;font-size:0.9rem;">🔑 ログインする</button>
+      </div>
+
+      <div class="auth-divider">または</div>
+
+      <button class="btn-google" id="btnAuthGoogle">
+        <span>G</span><span>Googleアカウントでログイン</span>
+      </button>
+      <div class="auth-note">
+        ※学校・組織のGoogleアカウントではブロックされる場合があります。その場合は上の『ID＋パスワード』で登録してください。<br>
+        ※新規登録すると、現在ゲストで遊んでいるレート・コイン・所持テーマ・記録がそのままクラウドに引き継がれます。
+      </div>
+    </div>
+
+    <!-- Logged In View -->
+    <div id="authLoggedInView" style="display:none;">
+      <div class="auth-status-card">
+        <div style="font-size:0.74rem;color:var(--green);font-weight:900;margin-bottom:4px;">☁ クラウド同期有効（ログイン中）</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <div style="font-size:0.92rem;font-weight:900;color:var(--text-main);" id="authSignedName">PLAYER</div>
+          <span class="pid-badge guest" id="authSignedPlayerId">ID: GUEST</span>
+          <span id="authSignedJoinedAt" style="font-size:0.7rem;color:var(--text-dim);font-weight:700;"></span>
+        </div>
+        <div style="font-size:0.74rem;color:var(--text-dim);margin-top:4px;" id="authSignedMethod">ログイン方式: ID＋パスワード</div>
+        <div style="font-size:0.72rem;color:var(--text-dim);font-family:monospace;margin-top:2px;" id="authSignedUid">UID: --------</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-primary" id="btnAuthSyncNow" style="width:100%;">☁ 今すぐ同期</button>
+        <button class="btn btn-danger" id="btnAuthLogout" style="width:100%;">🚪 ログアウト</button>
+      </div>
+      <div class="auth-note" style="margin-top:10px;">
+        試合終了・記録更新・ショップ購入時に自動でクラウド保存されます。別端末から同じIDでログインするとデータが復元されます。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN DEBUG PANEL -->
+<div class="overlay" id="overlayAdmPanel">
+  <div class="result-card" style="max-width:560px;max-height:88dvh;overflow-y:auto;padding:18px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <strong style="font-size:0.95rem;color:var(--cyan);">ADMIN CONSOLE</strong>
+      <button class="adm-btn" id="btnAdmClose">✕ 閉じる</button>
+    </div>
+
+    <div class="adm-sec">
+      <div class="adm-sec-title">🪙 通貨・アンロック</div>
+      <div class="adm-row">
+        <button class="adm-btn" id="admCoin1k">+1000 🪙</button>
+        <button class="adm-btn" id="admCoin10k">+10000 🪙</button>
+        <button class="adm-btn warn" id="admCoin0">コイン 0</button>
+      </div>
+      <div class="adm-row">
+        <button class="adm-btn" id="admUnlockShop">全テーマ＆全スキン解放</button>
+        <button class="adm-btn" id="admUnlockAch">全実績＆称号解放</button>
+        <button class="adm-btn" id="admUnlockAllSkills">⚡ 全50スキル解放</button>
+      </div>
+      <div class="adm-row">
+        <button class="adm-btn" id="admDailyComplete">デイリー全達成</button>
+        <button class="adm-btn" id="admDailyReset">デイリー日付リセット</button>
+      </div>
+    </div>
+
+    <div class="adm-sec">
+      <div class="adm-sec-title">🏆 レート・セーブデータ</div>
+      <div class="adm-row">
+        <button class="adm-btn" data-adm-rate="1300">R 1300</button>
+        <button class="adm-btn" data-adm-rate="1500">R 1500</button>
+        <button class="adm-btn" data-adm-rate="1800">R 1800</button>
+        <button class="adm-btn" data-adm-rate="2100">R 2100 MASTER</button>
+      </div>
+      <div class="adm-row">
+        <input type="number" id="admRateInput" class="input-field" min="0" max="9999" placeholder="任意レート" style="width:130px;padding:5px 8px;font-size:0.8rem;">
+        <button class="adm-btn" id="admRateApply">レート反映</button>
+        <button class="adm-btn warn" id="admResetAll" style="margin-left:auto;">🗑 セーブ完全初期化</button>
+      </div>
+      <div id="admResetConfirmRow" class="adm-row" style="display:none;margin-top:6px;padding:6px;border-radius:6px;background:rgba(239,68,68,0.14);">
+        <span style="font-size:0.74rem;color:#fca5a5;">本当に全データを初期化しますか？</span>
+        <button class="adm-btn warn" id="admResetYes">はい（初期化）</button>
+        <button class="adm-btn" id="admResetNo">キャンセル</button>
+      </div>
+    </div>
+
+    <div class="adm-sec" id="admBattleSec">
+      <div class="adm-sec-title">🎮 バトル＆演出テスト <span id="admBattleNote" style="color:var(--text-dim);font-weight:600;">(オフライン専用)</span></div>
+      <div class="adm-row">
+        <button class="adm-btn" id="admGarbSelf">自分におじゃま (T4/P30)</button>
+        <button class="adm-btn" id="admGarbOpp">相手におじゃま (T4/P30)</button>
+        <button class="adm-btn" id="admSwap55">SWAP残り5.5sへ</button>
+      </div>
+      <div class="adm-row">
+        <button class="adm-btn" id="admForceWin">強制ラウンド勝利</button>
+        <button class="adm-btn warn" id="admForceKO">強制K.O.</button>
+        <button class="adm-btn" id="admPuyoStair">ぷよ階段大連鎖サンプル配置</button>
+      </div>
+      <div class="adm-row">
+        <span style="font-size:0.72rem;color:var(--text-dim);">テトリスNEXT固定:</span>
+        <button class="adm-btn active" data-adm-queue="normal">通常(7-Bag)</button>
+        <button class="adm-btn" data-adm-queue="I">Iミノのみ</button>
+        <button class="adm-btn" data-adm-queue="T">Tミノのみ</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+
+<!-- PUZZLE DOJO OVERLAY -->
+<div class="overlay" id="overlayPuzzleDojo">
+  <div class="result-card puzzle-modal-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+      <div class="panel-title" style="margin-bottom:0;font-size:1.05rem;">🧩 パズル道場（全20問）</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="puzzleProgressPill" class="coin-pill">クリア: 0 / 20</span>
+        <button class="pill-btn" id="btnClosePuzzleDojo">✕ 閉じる</button>
+      </div>
+    </div>
+
+    <div id="puzzleSelectView">
+      <div class="set-tabs" style="grid-template-columns:repeat(2,1fr);margin-bottom:10px;">
+        <button class="set-tab active" data-puztab="tetris">🟦 詰めテトリス (10問)</button>
+        <button class="set-tab" data-puztab="puyo">🟣 詰めぷよ (10問)</button>
+      </div>
+      <div class="puzzle-grid" id="puzzleListGrid"></div>
+    </div>
+
+    <div id="puzzlePlayView" style="display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+        <div>
+          <strong id="puzTitle" style="font-size:0.95rem;color:var(--cyan);">問題タイトル</strong>
+          <div id="puzGoalDesc" style="font-size:0.78rem;color:var(--text-main);margin-top:2px;">クリア条件</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn btn-ghost" id="btnPuzzleReset" style="padding:6px 10px;font-size:0.76rem;">🔄 やり直し</button>
+          <button class="btn btn-ghost" id="btnPuzzleBackList" style="padding:6px 10px;font-size:0.76rem;">📋 問題一覧</button>
+        </div>
+      </div>
+      <div class="puzzle-stage-wrap">
+        <canvas id="puzzleCanvas" width="480" height="520"></canvas>
+        <div class="puzzle-side-info">
+          <div class="stat-box" style="margin-bottom:8px;">
+            <div class="stat-label">残り手数</div>
+            <div class="stat-val" id="puzMovesLeft">1手</div>
+          </div>
+          <div class="stat-box" style="margin-bottom:8px;">
+            <div class="stat-label">ヒント</div>
+            <div id="puzHintText" style="font-size:0.74rem;color:var(--text-dim);line-height:1.4;margin-top:4px;"></div>
+          </div>
+          <div id="puzStatusBanner" class="puzzle-status"></div>
+          <div class="puzzle-touch-controls" id="puzTouchControls">
+            <button class="btn btn-ghost" data-puzact="left">◀</button>
+            <button class="btn btn-ghost" data-puzact="down">▼</button>
+            <button class="btn btn-ghost" data-puzact="right">▶</button>
+            <button class="btn btn-ghost" data-puzact="ccw">↺</button>
+            <button class="btn btn-ghost" data-puzact="cw">↻</button>
+            <button class="btn btn-ghost" data-puzact="rot180">180°</button>
+            <button class="btn btn-primary" data-puzact="drop" style="grid-column:span 3;">⬇ 落とす / 確定</button>
+          </div>
+          <button class="btn btn-green" id="btnPuzzleNext" style="display:none;width:100%;margin-top:8px;">▶ 次の問題へ</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BIG BANG CLASH OVERLAY -->
+<div class="overlay" id="overlayBigBangClash" style="pointer-events:none;">
+  <div class="bb-clash-card">
+    <div style="font-size:0.86rem;font-weight:900;letter-spacing:0.18em;color:#fde047;">💥 BIG BANG CLASH! 💥</div>
+    <div class="bb-clash-vs">
+      <div class="bb-clash-side self">
+        <div style="font-size:0.72rem;color:var(--cyan);font-weight:800;">YOUR CHARGE</div>
+        <div class="bb-clash-num" id="bbClashSelfVal">0</div>
+      </div>
+      <div class="bb-clash-spark">⚡</div>
+      <div class="bb-clash-side opp">
+        <div style="font-size:0.72rem;color:var(--pink);font-weight:800;">OPPONENT CHARGE</div>
+        <div class="bb-clash-num" id="bbClashOppVal">0</div>
+      </div>
+    </div>
+    <div class="bb-clash-result" id="bbClashResult">CRASH!</div>
+  </div>
+</div>
+
+<!-- SKILL GACHA / DECK / ENCYCLOPEDIA OVERLAY -->
+<div class="overlay" id="overlaySkillModal">
+  <div class="result-card" style="max-width:720px;max-height:90dvh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+      <div class="panel-title" style="margin-bottom:0;font-size:1.05rem;">🎰 スキルガチャ & デッキ編成（全50種）</div>
+      <span class="coin-pill" id="skillModalCoinPill">🪙 200</span>
+    </div>
+    <div class="set-tabs" style="grid-template-columns:repeat(3,1fr);margin-bottom:10px;">
+      <button class="set-tab active" data-skilltab="gacha">🎰 ガチャ</button>
+      <button class="set-tab" data-skilltab="deck">⚔️ デッキ編成 (3枠)</button>
+      <button class="set-tab" data-skilltab="dex">📖 図鑑 (0/50)</button>
+    </div>
+    <div id="skillModalBody" style="flex:1;overflow-y:auto;text-align:left;padding-right:2px;margin-bottom:10px;"></div>
+    <button class="btn btn-primary" id="btnCloseSkillModal" style="width:100%;">閉じる</button>
+  </div>
+</div>
+
+<script src="js/ai.worker.js"></script>
+<script src="js/engines.js"></script>
+<script src="js/br99.js"></script>
+<script src="js/main.js"></script>
+<script src="js/extras.js"></script>
+<script src="js/skills_bigbang.js"></script>
+</body>
+</html>
